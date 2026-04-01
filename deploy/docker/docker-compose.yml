@@ -1,0 +1,154 @@
+version: "2.4"
+
+services:
+  planner-api-lite:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.planner-lite
+      args:
+        INSTALL_LOCAL_LLM: ${INSTALL_LOCAL_LLM}
+        TORCH_VERSION: ${TORCH_VERSION}
+        TORCH_WHL_CHANNEL: ${TORCH_WHL_CHANNEL}
+    image: mission-planner:lite
+    container_name: planner-api-lite
+    runtime: nvidia
+    environment:
+      TZ: ${TZ}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      PYTORCH_CUDA_ALLOC_CONF: ${PYTORCH_CUDA_ALLOC_CONF}
+      MISSION_PLANNER_BASE_DIR: /workspace/mission_planner
+      JOB_DIR: /data/jobs
+      PACKAGE_DIR: /data/packages
+      RESULT_DIR: /data/results
+      LOCAL_PLAN_DIR: /workspace/mission_planner/data/local_plans
+      MISSION_ASSET_ROOT_DIR: /workspace/mission_planner/data/assets/ncepu
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      BACKEND_CORS_ALLOW_ORIGINS: ${BACKEND_CORS_ALLOW_ORIGINS}
+      BACKEND_CORS_ALLOW_ORIGIN_REGEX: ${BACKEND_CORS_ALLOW_ORIGIN_REGEX}
+      BACKEND_CORS_ALLOW_CREDENTIALS: ${BACKEND_CORS_ALLOW_CREDENTIALS}
+      SEMANTIC_LLM_ENABLED: ${SEMANTIC_LLM_ENABLED}
+      SEMANTIC_LLM_PROVIDER: ${SEMANTIC_LLM_PROVIDER}
+      SEMANTIC_LLM_BASE_URL: ${SEMANTIC_LLM_BASE_URL}
+      SEMANTIC_LLM_API_KEY: ${SEMANTIC_LLM_API_KEY}
+      SEMANTIC_LLM_MODEL: ${SEMANTIC_LLM_MODEL}
+      SEMANTIC_LLM_TIMEOUT_SEC: ${SEMANTIC_LLM_TIMEOUT_SEC}
+      SEMANTIC_LLM_LOCAL_MODEL_PATH: ${SEMANTIC_LLM_LOCAL_MODEL_PATH}
+      SEMANTIC_LLM_LOCAL_ADAPTER_PATH: ${SEMANTIC_LLM_LOCAL_ADAPTER_PATH}
+      SEMANTIC_LLM_LOCAL_DEVICE: ${SEMANTIC_LLM_LOCAL_DEVICE}
+      SEMANTIC_LLM_LOCAL_DTYPE: ${SEMANTIC_LLM_LOCAL_DTYPE}
+      SEMANTIC_LLM_LOCAL_LOAD_IN_4BIT: ${SEMANTIC_LLM_LOCAL_LOAD_IN_4BIT}
+      SEMANTIC_LLM_LOCAL_BNB_COMPUTE_DTYPE: ${SEMANTIC_LLM_LOCAL_BNB_COMPUTE_DTYPE}
+      SEMANTIC_LLM_LOCAL_MAX_NEW_TOKENS: ${SEMANTIC_LLM_LOCAL_MAX_NEW_TOKENS}
+      SEMANTIC_LLM_LOCAL_TRUST_REMOTE_CODE: ${SEMANTIC_LLM_LOCAL_TRUST_REMOTE_CODE}
+    working_dir: /workspace/mission_planner
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8081"]
+    volumes:
+      - ${MISSION_PLANNER_PATH}:/workspace/mission_planner
+      - ${LOCAL_MODEL_ROOT}:/workspace/models:ro
+      - planner_jobs:/data/jobs
+      - planner_packages:/data/packages
+      - planner_results:/data/results
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+
+  public-tunnel-quick:
+    image: cloudflare/cloudflared:latest
+    container_name: planner-public-tunnel-quick
+    depends_on:
+      - planner-api-lite
+    command: ["tunnel", "--no-autoupdate", "--url", "http://planner-api-lite:8081"]
+    restart: unless-stopped
+
+  public-tunnel-managed:
+    image: cloudflare/cloudflared:latest
+    container_name: planner-public-tunnel-managed
+    depends_on:
+      - planner-api-lite
+    command: ["tunnel", "--no-autoupdate", "run", "--token", "${CLOUDFLARE_TUNNEL_TOKEN}"]
+    restart: unless-stopped
+
+  planner-api-geo:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.planner-geo
+    image: mission-planner:geo
+    container_name: planner-api-geo
+    runtime: nvidia
+    environment:
+      TZ: ${TZ}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      PYTORCH_CUDA_ALLOC_CONF: ${PYTORCH_CUDA_ALLOC_CONF}
+      MISSION_PLANNER_BASE_DIR: /workspace/mission_planner
+      JOB_DIR: /data/jobs
+      PACKAGE_DIR: /data/packages
+      RESULT_DIR: /data/results
+      LOCAL_PLAN_DIR: /workspace/mission_planner/data/local_plans
+      MISSION_ASSET_ROOT_DIR: /workspace/mission_planner/data/assets/ncepu
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      BACKEND_CORS_ALLOW_ORIGINS: ${BACKEND_CORS_ALLOW_ORIGINS}
+      BACKEND_CORS_ALLOW_ORIGIN_REGEX: ${BACKEND_CORS_ALLOW_ORIGIN_REGEX}
+      BACKEND_CORS_ALLOW_CREDENTIALS: ${BACKEND_CORS_ALLOW_CREDENTIALS}
+      SEMANTIC_LLM_ENABLED: ${SEMANTIC_LLM_ENABLED}
+      SEMANTIC_LLM_PROVIDER: ${SEMANTIC_LLM_PROVIDER}
+      SEMANTIC_LLM_BASE_URL: ${SEMANTIC_LLM_BASE_URL}
+      SEMANTIC_LLM_API_KEY: ${SEMANTIC_LLM_API_KEY}
+      SEMANTIC_LLM_MODEL: ${SEMANTIC_LLM_MODEL}
+      SEMANTIC_LLM_TIMEOUT_SEC: ${SEMANTIC_LLM_TIMEOUT_SEC}
+      SEMANTIC_LLM_LOCAL_MODEL_PATH: ${SEMANTIC_LLM_LOCAL_MODEL_PATH}
+      SEMANTIC_LLM_LOCAL_ADAPTER_PATH: ${SEMANTIC_LLM_LOCAL_ADAPTER_PATH}
+      SEMANTIC_LLM_LOCAL_DEVICE: ${SEMANTIC_LLM_LOCAL_DEVICE}
+      SEMANTIC_LLM_LOCAL_DTYPE: ${SEMANTIC_LLM_LOCAL_DTYPE}
+      SEMANTIC_LLM_LOCAL_LOAD_IN_4BIT: ${SEMANTIC_LLM_LOCAL_LOAD_IN_4BIT}
+      SEMANTIC_LLM_LOCAL_BNB_COMPUTE_DTYPE: ${SEMANTIC_LLM_LOCAL_BNB_COMPUTE_DTYPE}
+      SEMANTIC_LLM_LOCAL_MAX_NEW_TOKENS: ${SEMANTIC_LLM_LOCAL_MAX_NEW_TOKENS}
+      SEMANTIC_LLM_LOCAL_TRUST_REMOTE_CODE: ${SEMANTIC_LLM_LOCAL_TRUST_REMOTE_CODE}
+    working_dir: /workspace/mission_planner
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8081"]
+    volumes:
+      - ${MISSION_PLANNER_PATH}:/workspace/mission_planner
+      - ${LOCAL_MODEL_ROOT}:/workspace/models:ro
+      - planner_jobs:/data/jobs
+      - planner_packages:/data/packages
+      - planner_results:/data/results
+    ports:
+      - "8082:8081"
+    restart: unless-stopped
+
+  ros-bridge:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.ros-bridge-galactic
+      args:
+        UBUNTU_APT_MIRROR: ${UBUNTU_APT_MIRROR}
+        UBUNTU_SECURITY_MIRROR: ${UBUNTU_SECURITY_MIRROR}
+        ROS2_APT_MIRROR: ${ROS2_APT_MIRROR}
+        ROS_KEY_URL: ${ROS_KEY_URL}
+    image: mission-planner:ros-galactic
+    container_name: ros-bridge-galactic
+    network_mode: host
+    ipc: host
+    environment:
+      TZ: ${TZ}
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY}
+    working_dir: /workspace/ros2_ws
+    command:
+      [
+        "bash",
+        "-lc",
+        "if [ -f /workspace/ros2_ws/install/local_setup.bash ]; then source /workspace/ros2_ws/install/local_setup.bash && ros2 run planner_bridge path_dispatcher_node; else echo 'ROS workspace not built yet. Run colcon build in the mounted ROS2_WS_PATH first.' && sleep infinity; fi"
+      ]
+    volumes:
+      - ${ROS2_WS_PATH}:/workspace/ros2_ws
+      - planner_results:/planner_results
+      - /dev:/dev
+    restart: unless-stopped
+
+volumes:
+  planner_jobs:
+  planner_packages:
+  planner_results:

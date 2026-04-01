@@ -1,0 +1,32 @@
+FROM python:3.12-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    TZ=Asia/Shanghai
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    git \
+    ca-certificates \
+    gdal-bin \
+    libgdal-dev \
+    libproj-dev \
+    libgeos-dev \
+    libstdc++6 \
+    tini \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY deploy/docker/requirements-geo.txt /tmp/requirements-geo.txt
+
+RUN python -m pip install --upgrade pip setuptools wheel && \
+    pip install -r /tmp/requirements-geo.txt
+
+WORKDIR /workspace/mission_planner
+
+EXPOSE 8081
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8081"]

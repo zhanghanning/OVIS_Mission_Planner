@@ -1,0 +1,7 @@
+*
+!.dockerignore
+!requirements.txt
+!requirements-llm-local.txt
+!deploy/
+!deploy/docker/
+!deploy/docker/**

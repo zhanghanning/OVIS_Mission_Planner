@@ -14,8 +14,8 @@
 启动：
 
 ```bash
-cd /home/techno/OSM2World_docs/deploy/docker
-docker-compose --env-file /home/techno/mission_stack/.env up -d planner-api-lite public-tunnel-quick
+cd /home/techno/mission_planner/deploy/docker
+docker-compose --env-file /home/techno/mission_planner/deploy/docker/.env up -d planner-api-lite public-tunnel-quick
 ```
 
 查看公网 URL：
@@ -33,7 +33,7 @@ docker logs -f planner-public-tunnel-quick
 
 在 Cloudflare 后台创建 Managed Tunnel，然后把 token 写进：
 
-- `/home/techno/mission_stack/.env`
+- `/home/techno/mission_planner/deploy/docker/.env`
 
 ```env
 CLOUDFLARE_TUNNEL_TOKEN=你的token
@@ -42,8 +42,8 @@ CLOUDFLARE_TUNNEL_TOKEN=你的token
 启动：
 
 ```bash
-cd /home/techno/OSM2World_docs/deploy/docker
-docker-compose --env-file /home/techno/mission_stack/.env up -d planner-api-lite public-tunnel-managed
+cd /home/techno/mission_planner/deploy/docker
+docker-compose --env-file /home/techno/mission_planner/deploy/docker/.env up -d planner-api-lite public-tunnel-managed
 ```
 
 ## 3. 前端应该调用哪些接口

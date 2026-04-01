@@ -1,83 +1,170 @@
 # Mission Planner
 
-这是算法后端的最小可运行骨架。
+`mission_planner` 是当前唯一保留的任务规划后端根目录。它负责批处理任务规划、交互式规划、语义任务解析，以及与三机协同规划结果相关的资产读取、结果落盘和对外 API 暴露。
 
-当前目标：
+原先分散在 `OSM2World_docs/deploy` 的 Docker 部署文件，以及 `mission_stack/.env` 的运行时环境变量，现已统一并入本项目。后续部署、启动、联调都只以 `mission_planner` 为入口。
 
-- 接收总后台下发的规划任务
-- 下载并解压 `mission_package.zip`
-- 读取 `route_graph.json / goals.json / robots.json`
-- 生成 `planner_result.zip`
-- 提供本地交互式规划接口
-- 支持手选任务点、框选范围、语义任务三类规划入口
-- 可视化展示三只 Cyberdog2 的规划结果
+## 项目能力
 
-推荐优先使用 Docker 运行，相关模板在：
+- 接收规划任务并生成结果包
+- 提供交互式规划接口和调试控制台
+- 支持手选任务点、框选区域、语义任务三种规划入口
+- 读取校园规划资产、任务点、路网和机器人注册信息
+- 预留本地模型直载与 OpenAI 兼容接口两类语义解析后端
+- 支持 Docker 化部署、Cloudflare Tunnel 暴露和 ROS2 bridge 联动
 
-- `../OSM2World_docs/deploy/docker`
+## 目录总览
 
-如果本地直接跑：
+```text
+mission_planner/
+├── app/
+│   ├── api/                # FastAPI 路由
+│   ├── core/               # 配置与日志
+│   ├── models/             # 请求/响应 schema
+│   ├── planners/           # 多机规划与分配算法
+│   ├── services/           # 任务、结果、资产、语义服务
+│   └── static/             # 内置调试页面
+├── config/                 # planner.yaml 等配置
+├── data/
+│   ├── assets/ncepu/       # 校园资产主目录
+│   │   ├── world/          # scene.glb / map_data.json / meshes.json 等
+│   │   ├── mission/        # nav_points.geojson / route_graph.json / semantic_catalog.json
+│   │   ├── fleet/          # robot_registry.json
+│   │   └── planning/       # 规划样例与运行产物
+│   ├── jobs/               # 批处理任务输入
+│   ├── packages/           # 上传的任务包
+│   ├── results/            # 规划结果包
+│   ├── local_plans/        # 交互式规划结果
+│   ├── models/             # 语义模型与适配器
+│   └── training/           # 训练数据
+├── deploy/
+│   └── docker/             # 统一部署入口
+│       ├── .env
+│       ├── .env.example
+│       ├── docker-compose.yml
+│       ├── Dockerfile.planner-lite
+│       ├── Dockerfile.planner-geo
+│       ├── Dockerfile.ros-bridge-galactic
+│       ├── requirements-geo.txt
+│       └── ros_entrypoint.sh
+├── docs/                   # 对接与架构文档
+├── logs/
+├── scripts/                # 本地开发与资产同步脚本
+├── tests/
+├── requirements.txt
+├── requirements-llm-local.txt
+└── README.md
+```
+
+新增目录的规划原则是：
+
+- 现有业务代码目录保持不动
+- 所有部署相关文件统一收口到 `deploy/docker/`
+- 运行环境变量只保留一份，放在 `deploy/docker/.env`
+- 后续不再依赖 `OSM2World_docs` 或 `mission_stack`
+
+## 关键接口
+
+- `GET /health`
+- `GET /api/planner/interactive/console`
+- `GET /api/planner/interactive/assets`
+- `GET /api/planner/interactive/semantic/provider-status`
+- `POST /api/planner/interactive/plans/manual`
+- `POST /api/planner/interactive/plans/polygon`
+- `POST /api/planner/interactive/plans/semantic`
+- `GET /api/planner/interactive/plans/{plan_id}`
+
+说明：
+
+- `GET /api/planner/interactive/console` 仅用于算法联调，不是正式前端页面
+- 交互式结果默认写入 `data/local_plans/<plan_id>/`
+- 默认资产根目录是 `data/assets/ncepu`
+
+## 本地开发
 
 ```bash
-# 在 mission_planner 项目根目录执行
+cd /home/techno/mission_planner
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8081 --reload
 ```
 
-交互式规划入口：
-
-- 控制台页面：`GET /api/planner/interactive/console`
-- 规划资产：`GET /api/planner/interactive/assets`
-- 语义模型状态：`GET /api/planner/interactive/semantic/provider-status`
-- 手选任务点：`POST /api/planner/interactive/plans/manual`
-- 框选范围：`POST /api/planner/interactive/plans/polygon`
-- 语义任务：`POST /api/planner/interactive/plans/semantic`
-- 查询结果：`GET /api/planner/interactive/plans/{plan_id}`
-
-交互式规划结果会写入：
-
-- `data/local_plans/<plan_id>/request.json`
-- `data/local_plans/<plan_id>/plan_result.json`
-
-当前默认读取的校园资产目录是：
-
-- `data/assets/ncepu`
-
-如果你临时还想读取外部资产目录，再手动覆盖：
+也可以直接使用现成脚本：
 
 ```bash
-export MISSION_ASSET_ROOT_DIR=/your/asset/root
+cd /home/techno/mission_planner
+./scripts/run_dev.sh
 ```
 
-语义任务默认先走本地规则解析。后端已经同时预留了两类大模型接入方式：
-
-- `local_transformers`
-  - 后端进程直接从本地模型目录加载
-  - 适合本机或挂载模型目录的专用容器
-- `openai_compatible`
-  - 调用兼容 OpenAI Chat Completions 的本地服务或远程服务
-  - 适合后续切换到本地推理服务、vLLM、代理网关或云 API
-
-启用本地模型直载：
+健康检查：
 
 ```bash
-source .venv/bin/activate
-pip install --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0+cu128
-pip install bitsandbytes>=0.45,<1.0
-pip install -r requirements-llm-local.txt
-export SEMANTIC_LLM_ENABLED=true
-export SEMANTIC_LLM_PROVIDER=local_transformers
-export SEMANTIC_LLM_LOCAL_MODEL_PATH=../models/Qwen3-VL-4B-Instruct
-export SEMANTIC_LLM_LOCAL_DEVICE=cuda
-export SEMANTIC_LLM_LOCAL_DTYPE=auto
-export SEMANTIC_LLM_LOCAL_LOAD_IN_4BIT=true
-export SEMANTIC_LLM_LOCAL_BNB_COMPUTE_DTYPE=float16
-uvicorn app.main:app --host 0.0.0.0 --port 8081 --reload
+curl http://127.0.0.1:8081/health
 ```
 
-启用 OpenAI 兼容接口：
+## Docker 部署
+
+当前推荐的统一入口：
+
+```bash
+cd /home/techno/mission_planner/deploy/docker
+docker-compose --env-file .env up -d planner-api-lite
+```
+
+重建并启动：
+
+```bash
+cd /home/techno/mission_planner/deploy/docker
+docker-compose --env-file .env up --build -d planner-api-lite
+```
+
+查看日志：
+
+```bash
+docker logs -f planner-api-lite
+```
+
+如果你的环境安装的是 Docker Compose v2 插件，也可以把上面的 `docker-compose` 替换成 `docker compose`。
+
+如果你习惯使用快捷脚本，也可以直接运行：
+
+```bash
+~/run_backend.sh
+```
+
+它现在会直接指向 `mission_planner/deploy/docker` 和新的 `.env`。
+
+可选服务：
+
+- `planner-api-geo`: 带地理依赖的后端镜像，监听 `8082`
+- `ros-bridge`: 挂载 `ROS2_WS_PATH`，用于和 ROS2 Galactic 工作区联动
+- `public-tunnel-quick`: Cloudflare Quick Tunnel
+- `public-tunnel-managed`: Cloudflare Managed Tunnel
+
+## 环境变量
+
+统一编辑：
+
+```text
+/home/techno/mission_planner/deploy/docker/.env
+```
+
+最关键的变量有：
+
+- `MISSION_PLANNER_PATH`: 本机项目绝对路径
+- `PUBLIC_BASE_URL`: 前端实际访问的后端地址
+- `BACKEND_CORS_ALLOW_ORIGINS`: 允许的前端源
+- `LOCAL_MODEL_ROOT`: 本地模型根目录，会挂载到容器的 `/workspace/models`
+- `SEMANTIC_LLM_*`: 语义模型启用方式、本地模型路径或 OpenAI 兼容接口配置
+- `ROS2_WS_PATH`: ROS2 工作区路径
+
+如果只想本地规则解析或关闭模型能力，可将：
+
+- `SEMANTIC_LLM_ENABLED=false`
+- `SEMANTIC_LLM_PROVIDER=disabled`
+
+如果要启用 OpenAI 兼容接口，可将：
 
 - `SEMANTIC_LLM_ENABLED=true`
 - `SEMANTIC_LLM_PROVIDER=openai_compatible`
@@ -85,11 +172,24 @@ uvicorn app.main:app --host 0.0.0.0 --port 8081 --reload
 - `SEMANTIC_LLM_API_KEY=...`
 - `SEMANTIC_LLM_MODEL=...`
 
-补充说明：
+## 数据与产物
 
-- 当前本地模型目录 `../models/Qwen3-VL-4B-Instruct` 实际是一个软链接，如果你在 Docker 里启用本地模型，优先挂载真实模型根目录，而不是只挂载这个软链接入口。
-- 当前语义解析只使用文本输入，不依赖图像推理链路。
+默认数据落点：
 
-前端对接请看：
+- 资产目录：`data/assets/ncepu`
+- 批处理任务：`data/jobs`
+- 任务包缓存：`data/packages`
+- 批处理结果：`data/results`
+- 交互式规划结果：`data/local_plans`
+
+交互式规划结果通常包含：
+
+- `data/local_plans/<plan_id>/request.json`
+- `data/local_plans/<plan_id>/plan_result.json`
+
+## 相关文档
 
 - `docs/frontend_api_contract.md`
+- `docs/frontend_backend_split_architecture.md`
+- `docs/public_access_for_frontend.md`
+- `docs/Cyberdog_GLB_Sim_Integration_Plan.md`

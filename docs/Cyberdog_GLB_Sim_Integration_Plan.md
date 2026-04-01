@@ -70,11 +70,11 @@
 
 使用你已经导出的官方场景包：
 
-- `/home/techno/OSM2World_docs/exports/NCEPU_Repaired_export/scene.glb`
-- `/home/techno/OSM2World_docs/exports/NCEPU_Repaired_export/map_data.json`
-- `/home/techno/OSM2World_docs/exports/NCEPU_Repaired_export/world_objects.json`
-- `/home/techno/OSM2World_docs/exports/NCEPU_Repaired_export/meshes.json`
-- `/home/techno/OSM2World_docs/exports/NCEPU_Repaired_export/mesh_triangles.json`
+- `/home/techno/mission_planner/data/assets/ncepu/world/scene.glb`
+- `/home/techno/mission_planner/data/assets/ncepu/world/map_data.json`
+- `/home/techno/mission_planner/data/assets/ncepu/world/world_objects.json`
+- `/home/techno/mission_planner/data/assets/ncepu/world/meshes.json`
+- `/home/techno/mission_planner/data/assets/ncepu/world/mesh_triangles.json`
 
 用途：
 
@@ -181,7 +181,7 @@
 
 以这套修复后导出结果为当前基准：
 
-- `/home/techno/OSM2World_docs/exports/NCEPU_Repaired_export`
+- `/home/techno/mission_planner/data/assets/ncepu/world`
 
 不要再频繁改 OSM 数据，除非发现明显错误。
 
@@ -191,7 +191,7 @@
 
 新增文件：
 
-- `/home/techno/mission_stack/data/nav_points.geojson`
+- `/home/techno/mission_planner/data/assets/ncepu/mission/nav_points.geojson`
 
 每个点至少存：
 
@@ -217,7 +217,7 @@
 
 新增文件：
 
-- `/home/techno/mission_stack/data/semantic_catalog.json`
+- `/home/techno/mission_planner/data/assets/ncepu/mission/semantic_catalog.json`
 
 内容建议：
 
@@ -234,7 +234,7 @@
 
 新增文件：
 
-- `/home/techno/mission_stack/data/route_graph.geojson`
+- `/home/techno/mission_planner/data/assets/ncepu/mission/route_graph.json`
 
 图结构：
 
@@ -614,4 +614,3 @@ ros2 launch cyberdog_gazebo gazebo_nav.launch.py wname:=ncepu_scene
   - https://wiki.openstreetmap.org/wiki/Good_practice
 - OSM Limitations:
   - https://wiki.openstreetmap.org/wiki/Limitations
-

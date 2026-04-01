@@ -1,0 +1,39 @@
+FROM python:3.11-slim
+
+ARG INSTALL_LOCAL_LLM=false
+ARG TORCH_VERSION=2.8.0
+ARG TORCH_WHL_CHANNEL=cpu
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DEFAULT_TIMEOUT=300 \
+    TZ=Asia/Shanghai
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    git \
+    ca-certificates \
+    libstdc++6 \
+    tini \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt /tmp/requirements.txt
+COPY requirements-llm-local.txt /tmp/requirements-llm-local.txt
+
+RUN python -m pip install --upgrade pip setuptools wheel && \
+    pip install --retries 10 -r /tmp/requirements.txt && \
+    if [ "${INSTALL_LOCAL_LLM}" = "true" ]; then \
+      pip install --retries 10 --index-url "https://download.pytorch.org/whl/${TORCH_WHL_CHANNEL}" \
+        "torch==${TORCH_VERSION}+${TORCH_WHL_CHANNEL}" && \
+      pip install --retries 10 -r /tmp/requirements-llm-local.txt; \
+    fi
+
+WORKDIR /workspace/mission_planner
+
+EXPOSE 8081
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8081"]
