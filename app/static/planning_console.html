@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mission Planner Console</title>
+  <style>
+    :root {
+      --bg: #f5f1e8;
+      --panel: #fffdf7;
+      --line: #d8ccb7;
+      --text: #1e2a33;
+      --muted: #5f6c74;
+      --accent: #c75c2d;
+      --accent-2: #1f6f8b;
+      --accent-3: #1a936f;
+      --danger: #bf4342;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(199, 92, 45, 0.12), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(31, 111, 139, 0.14), transparent 32%),
+        var(--bg);
+    }
+    .app {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      min-height: 100vh;
+      gap: 0;
+    }
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: rgba(255, 253, 247, 0.9);
+      backdrop-filter: blur(8px);
+      padding: 20px 18px 24px;
+      overflow-y: auto;
+    }
+    .main {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 24px;
+      letter-spacing: 0.02em;
+    }
+    h2 {
+      margin: 18px 0 10px;
+      font-size: 15px;
+    }
+    p, li, label, input, textarea, button, pre {
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .muted { color: var(--muted); }
+    .toolbar, .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    button {
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    }
+    button:hover {
+      transform: translateY(-1px);
+      border-color: #b7a68d;
+      background: #fff5ee;
+    }
+    button.primary {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+    button.secondary {
+      background: var(--accent-2);
+      color: white;
+      border-color: var(--accent-2);
+    }
+    button.success {
+      background: var(--accent-3);
+      color: white;
+      border-color: var(--accent-3);
+    }
+    button.danger {
+      background: var(--danger);
+      color: white;
+      border-color: var(--danger);
+    }
+    textarea {
+      width: 100%;
+      min-height: 86px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      resize: vertical;
+      background: white;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      background: var(--panel);
+      box-shadow: 0 8px 24px rgba(40, 40, 40, 0.04);
+      margin-bottom: 12px;
+    }
+    .status {
+      padding: 9px 12px;
+      border-radius: 12px;
+      background: rgba(31, 111, 139, 0.08);
+      color: var(--accent-2);
+      margin-bottom: 12px;
+      min-height: 42px;
+    }
+    .map-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 540px;
+      padding: 18px;
+    }
+    canvas {
+      width: 100%;
+      height: calc(100vh - 180px);
+      min-height: 540px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.9), rgba(247,243,233,0.95)),
+        repeating-linear-gradient(
+          0deg,
+          rgba(31, 111, 139, 0.04),
+          rgba(31, 111, 139, 0.04) 1px,
+          transparent 1px,
+          transparent 40px
+        ),
+        repeating-linear-gradient(
+          90deg,
+          rgba(31, 111, 139, 0.04),
+          rgba(31, 111, 139, 0.04) 1px,
+          transparent 1px,
+          transparent 40px
+        );
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.65);
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding: 0 18px 18px;
+      color: var(--muted);
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+    .list {
+      margin: 0;
+      padding-left: 18px;
+      max-height: 160px;
+      overflow: auto;
+    }
+    .plan-robot {
+      border-left: 4px solid var(--line);
+      padding-left: 10px;
+      margin-bottom: 12px;
+    }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .kpi {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.75);
+    }
+    .kpi strong {
+      display: block;
+      font-size: 18px;
+      margin-top: 2px;
+    }
+    @media (max-width: 980px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
+      canvas { height: 65vh; min-height: 420px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <h1>任务规划控制台</h1>
+      <p class="muted">支持手选任务点、框选范围、语义任务三种入口，并直接展示三只机器狗的规划结果。</p>
+
+      <div class="status" id="statusBox">正在加载规划资产...</div>
+
+      <div class="card">
+        <h2>工作模式</h2>
+        <div class="toolbar">
+          <button id="manualModeBtn" class="primary">手选任务点</button>
+          <button id="polygonModeBtn" class="secondary">框选范围</button>
+          <button id="clearSelectionBtn">清空已选点</button>
+          <button id="clearPolygonBtn">清空范围</button>
+          <button id="resetViewBtn">重置视图</button>
+        </div>
+        <p class="muted" id="modeHint">当前模式：手选任务点。点击地图上的圆点即可增删目标点。</p>
+      </div>
+
+      <div class="card">
+        <h2>手选任务点</h2>
+        <div class="toolbar">
+          <button id="submitManualBtn" class="success">生成手选规划</button>
+        </div>
+        <p class="muted">已选任务点会高亮显示，并出现在下方列表。</p>
+        <ol class="list" id="selectedNavList"></ol>
+      </div>
+
+      <div class="card">
+        <h2>框选范围</h2>
+        <div class="toolbar">
+          <button id="submitPolygonBtn" class="success">生成范围规划</button>
+        </div>
+        <p class="muted">切到框选范围模式后，在地图上依次点击范围顶点，形成闭合多边形后提交。</p>
+        <ol class="list" id="polygonVertexList"></ol>
+      </div>
+
+      <div class="card">
+        <h2>语义任务</h2>
+        <textarea id="semanticQuery" placeholder="例如：巡检所有教学楼设施&#10;或：巡检教12到教14楼&#10;或：巡检北门和南门"></textarea>
+        <div class="toolbar" style="margin-top: 10px;">
+          <button id="submitSemanticBtn" class="success">生成语义规划</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>规划摘要</h2>
+        <div class="kpis">
+          <div class="kpi">
+            已分配目标
+            <strong id="assignedCount">0</strong>
+          </div>
+          <div class="kpi">
+            未分配目标
+            <strong id="unassignedCount">0</strong>
+          </div>
+          <div class="kpi">
+            总路径长度
+            <strong id="totalDistance">0 m</strong>
+          </div>
+          <div class="kpi">
+            当前计划 ID
+            <strong id="currentPlanId" style="font-size: 12px;">-</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>机器人路线</h2>
+        <div id="robotPlans"></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="map-wrap">
+        <canvas id="mapCanvas"></canvas>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><span class="swatch" style="background:#8b6f47;"></span>场景边界</div>
+        <div class="legend-item"><span class="swatch" style="background:#d8c7b2;"></span>建筑</div>
+        <div class="legend-item"><span class="swatch" style="background:#87ab6d;"></span>用地/绿地</div>
+        <div class="legend-item"><span class="swatch" style="background:#c7c1b0;"></span>路网</div>
+        <div class="legend-item"><span class="swatch" style="background:#2b2b2b;"></span>任务点</div>
+        <div class="legend-item"><span class="swatch" style="background:#c75c2d;"></span>已选任务点</div>
+        <div class="legend-item"><span class="swatch" style="background:#d94841;"></span>slot_01</div>
+        <div class="legend-item"><span class="swatch" style="background:#2674f2;"></span>slot_02</div>
+        <div class="legend-item"><span class="swatch" style="background:#1a936f;"></span>slot_03</div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      assets: null,
+      bounds: null,
+      mode: 'manual',
+      selectedNavIds: new Set(),
+      polygonVertices: [],
+      plan: null,
+      hoveredNavId: null,
+      view: {
+        zoom: 1,
+        minZoom: 1,
+        maxZoom: 8,
+        centerX: 0,
+        centerZ: 0,
+      },
+      drag: {
+        active: false,
+        startClientX: 0,
+        startClientY: 0,
+        startCenterX: 0,
+        startCenterZ: 0,
+        moved: false,
+        justDragged: false,
+      },
+    };
+
+    const statusBox = document.getElementById('statusBox');
+    const modeHint = document.getElementById('modeHint');
+    const selectedNavList = document.getElementById('selectedNavList');
+    const polygonVertexList = document.getElementById('polygonVertexList');
+    const assignedCount = document.getElementById('assignedCount');
+    const unassignedCount = document.getElementById('unassignedCount');
+    const totalDistance = document.getElementById('totalDistance');
+    const currentPlanId = document.getElementById('currentPlanId');
+    const robotPlans = document.getElementById('robotPlans');
+    const semanticQuery = document.getElementById('semanticQuery');
+    const canvas = document.getElementById('mapCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialPlanId = urlParams.get('plan_id');
+
+    function setStatus(text, isError = false) {
+      statusBox.textContent = text;
+      statusBox.style.background = isError ? 'rgba(191, 67, 66, 0.12)' : 'rgba(31, 111, 139, 0.08)';
+      statusBox.style.color = isError ? '#8c2b2b' : '#1f6f8b';
+    }
+
+    function resizeCanvas() {
+      const ratio = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * ratio;
+      canvas.height = rect.height * ratio;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      draw();
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function updateCanvasCursor() {
+      canvas.style.cursor = state.drag.active ? 'grabbing' : 'grab';
+    }
+
+    function computeBounds() {
+      const boundary = state.assets.world_boundary;
+      const padding = 25;
+      if (boundary) {
+        state.bounds = {
+          minX: boundary.min_x - padding,
+          maxX: boundary.max_x + padding,
+          minZ: boundary.min_z - padding,
+          maxZ: boundary.max_z + padding,
+        };
+      } else {
+        const xs = [];
+        const zs = [];
+        state.assets.nav_points.forEach((nav) => {
+          xs.push(nav.local_x);
+          zs.push(nav.local_z);
+        });
+        state.assets.route_segments.forEach((segment) => {
+          segment.points.forEach((point) => {
+            xs.push(point.x);
+            zs.push(point.z);
+          });
+        });
+        state.bounds = {
+          minX: Math.min(...xs) - padding,
+          maxX: Math.max(...xs) + padding,
+          minZ: Math.min(...zs) - padding,
+          maxZ: Math.max(...zs) + padding,
+        };
+      }
+
+      state.view = {
+        zoom: 1,
+        minZoom: 1,
+        maxZoom: 8,
+        centerX: (state.bounds.minX + state.bounds.maxX) / 2,
+        centerZ: (state.bounds.minZ + state.bounds.maxZ) / 2,
+      };
+    }
+
+    function currentScale() {
+      const rect = canvas.getBoundingClientRect();
+      const spanX = state.bounds.maxX - state.bounds.minX || 1;
+      const spanZ = state.bounds.maxZ - state.bounds.minZ || 1;
+      return Math.min(rect.width / spanX, rect.height / spanZ) * 0.92 * state.view.zoom;
+    }
+
+    function drawBoundary() {
+      const boundary = state.assets.world_boundary;
+      if (!boundary) {
+        return;
+      }
+      const corners = [
+        localToCanvas(boundary.min_x, boundary.min_z),
+        localToCanvas(boundary.max_x, boundary.min_z),
+        localToCanvas(boundary.max_x, boundary.max_z),
+        localToCanvas(boundary.min_x, boundary.max_z),
+      ];
+      ctx.save();
+      ctx.strokeStyle = 'rgba(139, 111, 71, 0.9)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      corners.forEach((point, index) => {
+        if (index === 0) {
+          ctx.moveTo(point.x, point.y);
+        } else {
+          ctx.lineTo(point.x, point.y);
+        }
+      });
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function localToCanvas(x, z) {
+      const rect = canvas.getBoundingClientRect();
+      const scale = currentScale();
+      const px = rect.width / 2 + (x - state.view.centerX) * scale;
+      const py = rect.height / 2 - (z - state.view.centerZ) * scale;
+      return { x: px, y: py, scale };
+    }
+
+    function canvasToLocal(px, py) {
+      const rect = canvas.getBoundingClientRect();
+      const scale = currentScale();
+      const localX = ((px - rect.width / 2) / scale) + state.view.centerX;
+      const localZ = ((rect.height / 2 - py) / scale) + state.view.centerZ;
+      return { x: localX, z: localZ };
+    }
+
+    function nearestNavAtCanvasPoint(px, py, thresholdPx = 14) {
+      let best = null;
+      state.assets.nav_points.forEach((nav) => {
+        const point = localToCanvas(nav.local_x, nav.local_z);
+        const dx = point.x - px;
+        const dy = point.y - py;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= thresholdPx && (!best || dist < best.dist)) {
+          best = { nav, dist };
+        }
+      });
+      return best ? best.nav : null;
+    }
+
+    function polygonLabelPoint(points) {
+      let sumX = 0;
+      let sumZ = 0;
+      points.forEach((point) => {
+        sumX += point.x;
+        sumZ += point.z;
+      });
+      return { x: sumX / points.length, z: sumZ / points.length };
+    }
+
+    function areaStyle(area) {
+      switch (area.style_key) {
+        case 'building':
+          return { fill: 'rgba(216, 199, 178, 0.95)', stroke: 'rgba(149, 121, 92, 0.9)', lineWidth: 1.1 };
+        case 'landuse:forest':
+        case 'landuse:orchard':
+          return { fill: 'rgba(113, 154, 102, 0.34)', stroke: 'rgba(84, 123, 72, 0.62)', lineWidth: 0.8 };
+        case 'landuse:meadow':
+        case 'landuse:grass':
+        case 'natural:grassland':
+        case 'leisure:park':
+          return { fill: 'rgba(155, 191, 120, 0.28)', stroke: 'rgba(110, 145, 82, 0.48)', lineWidth: 0.8 };
+        case 'leisure:pitch':
+          return { fill: 'rgba(132, 181, 140, 0.30)', stroke: 'rgba(82, 129, 96, 0.55)', lineWidth: 0.8 };
+        case 'landuse:residential':
+          return { fill: 'rgba(233, 223, 205, 0.45)', stroke: 'rgba(175, 156, 131, 0.45)', lineWidth: 0.7 };
+        default:
+          return { fill: 'rgba(170, 196, 140, 0.20)', stroke: 'rgba(120, 143, 99, 0.4)', lineWidth: 0.7 };
+      }
+    }
+
+    function drawAreaPath(points) {
+      points.forEach((point, index) => {
+        const canvasPoint = localToCanvas(point.x, point.z);
+        if (index === 0) {
+          ctx.moveTo(canvasPoint.x, canvasPoint.y);
+        } else {
+          ctx.lineTo(canvasPoint.x, canvasPoint.y);
+        }
+      });
+      ctx.closePath();
+    }
+
+    function drawMapAreas() {
+      (state.assets.map_areas || []).forEach((area) => {
+        const style = areaStyle(area);
+        ctx.save();
+        ctx.beginPath();
+        drawAreaPath(area.outer);
+        (area.holes || []).forEach((hole) => {
+          drawAreaPath(hole);
+        });
+        ctx.fillStyle = style.fill;
+        ctx.strokeStyle = style.stroke;
+        ctx.lineWidth = style.lineWidth;
+        ctx.fill('evenodd');
+        ctx.stroke();
+        if (area.layer_type === 'building' && area.name && state.view.zoom >= 1.8) {
+          const labelPoint = polygonLabelPoint(area.outer);
+          const canvasPoint = localToCanvas(labelPoint.x, labelPoint.z);
+          ctx.fillStyle = 'rgba(60, 54, 46, 0.82)';
+          ctx.font = `${clamp(11 * Math.sqrt(state.view.zoom), 11, 16)}px "Noto Sans SC", sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(area.name, canvasPoint.x, canvasPoint.y);
+        }
+        ctx.restore();
+      });
+    }
+
+    function routeStyle(segment) {
+      if (segment.road_type === 'secondary') {
+        return { stroke: 'rgba(210, 174, 121, 0.85)', lineWidth: 2.2 };
+      }
+      if (segment.road_type === 'residential') {
+        return { stroke: 'rgba(186, 178, 164, 0.82)', lineWidth: 1.5 };
+      }
+      if (segment.road_type === 'footway') {
+        return { stroke: 'rgba(202, 196, 184, 0.78)', lineWidth: 1.0 };
+      }
+      return { stroke: 'rgba(120, 110, 92, 0.35)', lineWidth: 1.0 };
+    }
+
+    function drawRouteNetwork() {
+      state.assets.route_segments.forEach((segment) => {
+        const style = routeStyle(segment);
+        const a = localToCanvas(segment.points[0].x, segment.points[0].z);
+        const b = localToCanvas(segment.points[1].x, segment.points[1].z);
+        ctx.save();
+        ctx.lineWidth = style.lineWidth;
+        ctx.strokeStyle = style.stroke;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+        ctx.restore();
+      });
+    }
+
+    function drawPolygon() {
+      if (!state.polygonVertices.length) {
+        return;
+      }
+      ctx.save();
+      ctx.strokeStyle = 'rgba(199, 92, 45, 0.92)';
+      ctx.fillStyle = 'rgba(199, 92, 45, 0.12)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      state.polygonVertices.forEach((vertex, index) => {
+        const point = localToCanvas(vertex.x, vertex.z);
+        if (index === 0) {
+          ctx.moveTo(point.x, point.y);
+        } else {
+          ctx.lineTo(point.x, point.y);
+        }
+      });
+      if (state.polygonVertices.length >= 3) {
+        const first = localToCanvas(state.polygonVertices[0].x, state.polygonVertices[0].z);
+        ctx.lineTo(first.x, first.y);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.stroke();
+      state.polygonVertices.forEach((vertex) => {
+        const point = localToCanvas(vertex.x, vertex.z);
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#c75c2d';
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+
+    function drawNavPoints() {
+      state.assets.nav_points.forEach((nav) => {
+        const point = localToCanvas(nav.local_x, nav.local_z);
+        const isSelected = state.selectedNavIds.has(nav.id);
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, isSelected ? 6.5 : 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = isSelected ? '#c75c2d' : '#2b2b2b';
+        ctx.fill();
+        if (state.hoveredNavId === nav.id) {
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, 11, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(199, 92, 45, 0.45)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+      });
+    }
+
+    function drawRobotAnchors() {
+      state.assets.robots.forEach((robot) => {
+        const start = robot.start_pose.resolved_local_position_m;
+        const home = robot.home_pose.resolved_local_position_m;
+        const startPoint = localToCanvas(start.x, start.z);
+        const homePoint = localToCanvas(home.x, home.z);
+        ctx.fillStyle = robot.planning_slot_id === 'slot_01' ? '#d94841' : robot.planning_slot_id === 'slot_02' ? '#2674f2' : '#1a936f';
+        ctx.fillRect(startPoint.x - 4, startPoint.y - 4, 8, 8);
+        ctx.beginPath();
+        ctx.arc(homePoint.x, homePoint.y, 6, 0, Math.PI * 2);
+        ctx.strokeStyle = ctx.fillStyle;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      });
+    }
+
+    function drawPlan() {
+      if (!state.plan) {
+        return;
+      }
+      state.plan.robots.forEach((robot) => {
+        const polyline = robot.display_route_local_m || [];
+        if (!polyline.length) {
+          return;
+        }
+        ctx.save();
+        ctx.strokeStyle = robot.color || '#444444';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        polyline.forEach((point, index) => {
+          const canvasPoint = localToCanvas(point.x, point.z);
+          if (index === 0) {
+            ctx.moveTo(canvasPoint.x, canvasPoint.y);
+          } else {
+            ctx.lineTo(canvasPoint.x, canvasPoint.y);
+          }
+        });
+        ctx.stroke();
+        ctx.restore();
+      });
+    }
+
+    function draw() {
+      if (!state.assets || !state.bounds) {
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      drawMapAreas();
+      drawBoundary();
+      drawRouteNetwork();
+      drawPlan();
+      drawPolygon();
+      drawNavPoints();
+      drawRobotAnchors();
+    }
+
+    function renderSelectedNavList() {
+      const selectedIds = Array.from(state.selectedNavIds);
+      selectedNavList.innerHTML = '';
+      if (!selectedIds.length) {
+        selectedNavList.innerHTML = '<li class="muted">尚未选择任务点</li>';
+        return;
+      }
+      selectedIds.sort().forEach((navId) => {
+        const nav = state.assets.nav_points.find((item) => item.id === navId);
+        const li = document.createElement('li');
+        li.textContent = nav ? `${nav.id} ${nav.name}` : navId;
+        selectedNavList.appendChild(li);
+      });
+    }
+
+    function renderPolygonVertexList() {
+      polygonVertexList.innerHTML = '';
+      if (!state.polygonVertices.length) {
+        polygonVertexList.innerHTML = '<li class="muted">尚未绘制范围顶点</li>';
+        return;
+      }
+      state.polygonVertices.forEach((vertex, index) => {
+        const li = document.createElement('li');
+        li.textContent = `P${index + 1}: (${vertex.x.toFixed(2)}, ${vertex.z.toFixed(2)})`;
+        polygonVertexList.appendChild(li);
+      });
+    }
+
+    function renderPlanSummary() {
+      if (!state.plan) {
+        assignedCount.textContent = '0';
+        unassignedCount.textContent = '0';
+        totalDistance.textContent = '0 m';
+        currentPlanId.textContent = '-';
+        robotPlans.innerHTML = '<p class="muted">当前还没有规划结果。</p>';
+        return;
+      }
+      assignedCount.textContent = String(state.plan.summary.assigned_count);
+      unassignedCount.textContent = String(state.plan.summary.unassigned_count);
+      totalDistance.textContent = `${state.plan.summary.total_distance_m.toFixed(1)} m`;
+      currentPlanId.textContent = state.plan.plan_id;
+
+      robotPlans.innerHTML = '';
+      state.plan.robots.forEach((robot) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'plan-robot';
+        wrapper.style.borderLeftColor = robot.color || '#444444';
+        const title = document.createElement('strong');
+        title.textContent = `${robot.planning_slot_id} / ${robot.hardware_id}`;
+        const detail = document.createElement('div');
+        detail.className = 'muted';
+        const routeNames = (robot.route_nav_points || []).map((item) => item.name).join(' -> ') || '未分配目标';
+        detail.innerHTML =
+          `路径长度：${robot.total_distance_with_home_m.toFixed(1)} m<br>` +
+          `访问顺序：${routeNames}`;
+        wrapper.appendChild(title);
+        wrapper.appendChild(detail);
+        robotPlans.appendChild(wrapper);
+      });
+    }
+
+    function setMode(mode) {
+      state.mode = mode;
+      if (mode === 'manual') {
+        modeHint.textContent = '当前模式：手选任务点。点击地图上的圆点即可增删目标点。';
+      } else {
+        modeHint.textContent = '当前模式：框选范围。在地图上依次点击顶点形成闭合多边形，再提交范围规划。';
+      }
+      draw();
+    }
+
+    async function loadAssets() {
+      const response = await fetch('/api/planner/interactive/assets');
+      if (!response.ok) {
+        throw new Error(`assets load failed: ${response.status}`);
+      }
+      state.assets = await response.json();
+      computeBounds();
+      renderSelectedNavList();
+      renderPolygonVertexList();
+      renderPlanSummary();
+      draw();
+    }
+
+    async function loadPlan(planId) {
+      const response = await fetch(`/api/planner/interactive/plans/${encodeURIComponent(planId)}`);
+      if (!response.ok) {
+        throw new Error(`plan load failed: ${response.status}`);
+      }
+      state.plan = await response.json();
+      renderPlanSummary();
+      draw();
+    }
+
+    async function submitPlan(url, payload, successLabel) {
+      setStatus('正在生成规划结果...');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'planning request failed');
+      }
+      state.plan = data;
+      renderPlanSummary();
+      draw();
+      setStatus(`${successLabel}，计划已生成：${data.plan_id}`);
+    }
+
+    canvas.addEventListener('mousemove', (event) => {
+      if (!state.assets) {
+        return;
+      }
+      if (state.drag.active) {
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      const nav = nearestNavAtCanvasPoint(event.clientX - rect.left, event.clientY - rect.top);
+      state.hoveredNavId = nav ? nav.id : null;
+      draw();
+    });
+
+    canvas.addEventListener('mousedown', (event) => {
+      if (!state.assets || event.button !== 0) {
+        return;
+      }
+      state.drag.active = true;
+      state.drag.startClientX = event.clientX;
+      state.drag.startClientY = event.clientY;
+      state.drag.startCenterX = state.view.centerX;
+      state.drag.startCenterZ = state.view.centerZ;
+      state.drag.moved = false;
+      updateCanvasCursor();
+    });
+
+    canvas.addEventListener('click', (event) => {
+      if (!state.assets) {
+        return;
+      }
+      if (state.drag.justDragged) {
+        state.drag.justDragged = false;
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      if (state.mode === 'manual') {
+        const nav = nearestNavAtCanvasPoint(px, py);
+        if (!nav) {
+          return;
+        }
+        if (state.selectedNavIds.has(nav.id)) {
+          state.selectedNavIds.delete(nav.id);
+        } else {
+          state.selectedNavIds.add(nav.id);
+        }
+        renderSelectedNavList();
+        draw();
+        return;
+      }
+      const local = canvasToLocal(px, py);
+      state.polygonVertices.push({ x: local.x, z: local.z });
+      renderPolygonVertexList();
+      draw();
+    });
+
+    canvas.addEventListener('wheel', (event) => {
+      if (!state.assets || !state.bounds) {
+        return;
+      }
+      event.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      const localBefore = canvasToLocal(px, py);
+      const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
+      const nextZoom = clamp(state.view.zoom * factor, state.view.minZoom, state.view.maxZoom);
+      if (Math.abs(nextZoom - state.view.zoom) < 1e-6) {
+        return;
+      }
+      state.view.zoom = nextZoom;
+      const localAfter = canvasToLocal(px, py);
+      state.view.centerX += localBefore.x - localAfter.x;
+      state.view.centerZ += localBefore.z - localAfter.z;
+      draw();
+    }, { passive: false });
+
+    window.addEventListener('mousemove', (event) => {
+      if (!state.drag.active || !state.assets || !state.bounds) {
+        return;
+      }
+      const scale = currentScale();
+      const dx = event.clientX - state.drag.startClientX;
+      const dy = event.clientY - state.drag.startClientY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        state.drag.moved = true;
+      }
+      state.view.centerX = state.drag.startCenterX - dx / scale;
+      state.view.centerZ = state.drag.startCenterZ + dy / scale;
+      draw();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!state.drag.active) {
+        return;
+      }
+      state.drag.active = false;
+      state.drag.justDragged = state.drag.moved;
+      updateCanvasCursor();
+    });
+
+    document.getElementById('manualModeBtn').addEventListener('click', () => setMode('manual'));
+    document.getElementById('polygonModeBtn').addEventListener('click', () => setMode('polygon'));
+    document.getElementById('clearSelectionBtn').addEventListener('click', () => {
+      state.selectedNavIds.clear();
+      renderSelectedNavList();
+      draw();
+    });
+    document.getElementById('clearPolygonBtn').addEventListener('click', () => {
+      state.polygonVertices = [];
+      renderPolygonVertexList();
+      draw();
+    });
+    document.getElementById('resetViewBtn').addEventListener('click', () => {
+      computeBounds();
+      draw();
+    });
+
+    document.getElementById('submitManualBtn').addEventListener('click', async () => {
+      try {
+        await submitPlan('/api/planner/interactive/plans/manual', {
+          nav_point_ids: Array.from(state.selectedNavIds),
+          mission_label: 'console_manual_plan',
+        }, '手选任务点规划完成');
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    });
+
+    document.getElementById('submitPolygonBtn').addEventListener('click', async () => {
+      try {
+        await submitPlan('/api/planner/interactive/plans/polygon', {
+          vertices: state.polygonVertices,
+          coordinate_mode: 'local',
+          mission_label: 'console_polygon_plan',
+        }, '范围规划完成');
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    });
+
+    document.getElementById('submitSemanticBtn').addEventListener('click', async () => {
+      try {
+        await submitPlan('/api/planner/interactive/plans/semantic', {
+          query: semanticQuery.value,
+          use_llm: true,
+        }, '语义任务规划完成');
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    });
+
+    window.addEventListener('resize', resizeCanvas);
+
+    (async () => {
+      try {
+        await loadAssets();
+        resizeCanvas();
+        updateCanvasCursor();
+        if (initialPlanId) {
+          await loadPlan(initialPlanId);
+          setStatus(`已加载历史计划：${initialPlanId}`);
+        } else {
+          setStatus('规划资产已加载，可以开始选点、框选或输入语义任务。');
+        }
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+build/
+dist/
+*.log
+__pycache__/
+*.pyc
+.vscode/
+.idea/
+*.safetensors
+技术交底书.md
+
+data/
