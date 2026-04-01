@@ -15,6 +15,7 @@
       --accent-2: #1f6f8b;
       --accent-3: #1a936f;
       --danger: #bf4342;
+      --scene-radius: 10px;
     }
     * { box-sizing: border-box; }
     body {
@@ -23,26 +24,118 @@
       color: var(--text);
       background:
         radial-gradient(circle at top left, rgba(199, 92, 45, 0.12), transparent 28%),
-        radial-gradient(circle at bottom right, rgba(31, 111, 139, 0.14), transparent 32%),
+        radial-gradient(circle at bottom right, rgba(40, 142, 179, 0.14), transparent 32%),
         var(--bg);
+      height: 100vh;
+      overflow: hidden;
     }
     .app {
+      --sidebar-width: 360px;
       display: grid;
-      grid-template-columns: 360px 1fr;
-      min-height: 100vh;
+      grid-template-columns: var(--sidebar-width) 10px minmax(0, 1fr);
+      height: 100vh;
       gap: 0;
+      overflow: hidden;
     }
     .sidebar {
       border-right: 1px solid var(--line);
       background: rgba(255, 253, 247, 0.9);
       backdrop-filter: blur(8px);
-      padding: 20px 18px 24px;
-      overflow-y: auto;
+      height: 100vh;
+      overflow: hidden;
     }
-    .main {
+    .sidebar-resizer {
+      position: relative;
+      width: 10px;
+      cursor: col-resize;
+      background: linear-gradient(
+        180deg,
+        rgba(216, 204, 183, 0.18),
+        rgba(199, 92, 45, 0.08),
+        rgba(216, 204, 183, 0.18)
+      );
+      transition: background 0.15s ease;
+    }
+    .sidebar-resizer::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 4px;
+      height: 72px;
+      border-radius: 999px;
+      transform: translate(-50%, -50%);
+      background: rgba(95, 108, 116, 0.28);
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.55);
+    }
+    .sidebar-resizer:hover,
+    .sidebar-resizer.dragging {
+      background: linear-gradient(
+        180deg,
+        rgba(216, 204, 183, 0.28),
+        rgba(199, 92, 45, 0.16),
+        rgba(216, 204, 183, 0.28)
+      );
+    }
+    .sidebar-resizer:hover::before,
+    .sidebar-resizer.dragging::before {
+      background: rgba(199, 92, 45, 0.55);
+    }
+    .sidebar-shell {
+      display: grid;
+      grid-template-columns: 62px minmax(0, 1fr);
+      height: 100%;
+      min-height: 0;
+    }
+    .sidebar-tabs {
       display: flex;
       flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 18px 10px;
+      border-right: 1px solid var(--line);
+      background: rgba(248, 242, 232, 0.92);
+    }
+    .sidebar-tab {
+      width: 42px;
+      min-height: 128px;
+      padding: 12px 8px;
+      border-radius: 16px;
+      font-size: 12px;
+      font-weight: 600;
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      letter-spacing: 0.08em;
+    }
+    .sidebar-tab.active {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+      box-shadow: 0 10px 24px rgba(199, 92, 45, 0.18);
+    }
+    .sidebar-content {
+      padding: 20px 18px 24px;
+      height: 100vh;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+    }
+    .panel-view {
+      display: none;
+    }
+    .panel-view.active {
+      display: block;
+    }
+    .main {
       min-width: 0;
+      height: 100vh;
+      position: sticky;
+      top: 0;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      gap: 18px;
+      padding: 18px;
     }
     h1 {
       margin: 0 0 10px;
@@ -77,6 +170,14 @@
       border-color: #b7a68d;
       background: #fff5ee;
     }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+      transform: none;
+      background: #ebe4d8;
+      border-color: var(--line);
+      color: var(--muted);
+    }
     button.primary {
       background: var(--accent);
       color: white;
@@ -106,6 +207,14 @@
       resize: vertical;
       background: white;
     }
+    input[type="number"], input[type="text"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: white;
+      color: var(--text);
+    }
     .card {
       border: 1px solid var(--line);
       border-radius: 16px;
@@ -124,14 +233,86 @@
     }
     .map-wrap {
       position: relative;
-      flex: 1;
-      min-height: 540px;
-      padding: 18px;
+      min-height: 0;
+    }
+    .scene-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border: 1px solid rgba(216, 204, 183, 0.9);
+      border-radius: var(--scene-radius);
+      background: rgba(255, 253, 247, 0.84);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 8px 24px rgba(40, 40, 40, 0.08);
+    }
+    .scene-bar-title {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border: 1px solid rgba(199, 92, 45, 0.18);
+      border-radius: var(--scene-radius);
+      min-height: 34px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(248, 239, 228, 0.92));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+    }
+    .scene-bar-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #c75c2d, #a8471d);
+      box-shadow: 0 0 0 3px rgba(199, 92, 45, 0.12);
+      flex: 0 0 auto;
+    }
+    .scene-bar-copy {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.05;
+      gap: 2px;
+    }
+    .scene-bar-kicker {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+    }
+    .scene-bar-text {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .scene-bar-list {
+      min-width: 0;
+      flex: 1 1 auto;
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 1px;
+      scrollbar-width: thin;
+    }
+    .scene-chip {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      white-space: nowrap;
+      min-height: 34px;
+      padding: 0 10px;
+      border-radius: var(--scene-radius);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    .scene-chip.active {
+      background: var(--accent-2);
+      color: white;
+      border-color: var(--accent-2);
     }
     canvas {
       width: 100%;
-      height: calc(100vh - 180px);
-      min-height: 540px;
+      height: 100%;
+      min-height: 0;
       border: 1px solid var(--line);
       border-radius: 22px;
       background:
@@ -156,8 +337,13 @@
       display: flex;
       flex-wrap: wrap;
       gap: 12px;
-      padding: 0 18px 18px;
+      padding: 12px 14px;
       color: var(--muted);
+      border: 1px solid rgba(216, 204, 183, 0.9);
+      border-radius: 16px;
+      background: rgba(255, 253, 247, 0.84);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 8px 24px rgba(40, 40, 40, 0.08);
     }
     .legend-item {
       display: flex;
@@ -187,6 +373,7 @@
       gap: 8px;
     }
     .kpi {
+      min-width: 0;
       padding: 10px 12px;
       border: 1px solid var(--line);
       border-radius: 12px;
@@ -197,114 +384,352 @@
       font-size: 18px;
       margin-top: 2px;
     }
+    .field-label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .robot-config-summary {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .robot-config-item {
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.72);
+    }
+    .robot-config-item strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 16px;
+    }
+    .scroll-inline {
+      display: block;
+      max-width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      white-space: nowrap;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(95, 108, 116, 0.42) transparent;
+      padding-bottom: 2px;
+    }
+    .scroll-inline::-webkit-scrollbar {
+      height: 6px;
+    }
+    .scroll-inline::-webkit-scrollbar-thumb {
+      background: rgba(95, 108, 116, 0.32);
+      border-radius: 999px;
+    }
+    .scroll-inline::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .robot-list {
+      display: grid;
+      gap: 10px;
+    }
+    .robot-card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(255,255,255,0.78);
+      box-shadow: 0 8px 20px rgba(40, 40, 40, 0.04);
+    }
+    .robot-card.active {
+      border-color: rgba(199, 92, 45, 0.65);
+      box-shadow: 0 12px 28px rgba(199, 92, 45, 0.12);
+      background: rgba(255, 247, 240, 0.96);
+    }
+    .robot-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .robot-card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .robot-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+      flex: 0 0 auto;
+    }
+    .robot-card-name {
+      font-weight: 700;
+    }
+    .robot-card-meta {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .robot-card-anchor {
+      margin: 8px 0;
+      padding: 9px 10px;
+      border-radius: 12px;
+      border: 1px dashed rgba(31, 111, 139, 0.28);
+      background: rgba(31, 111, 139, 0.06);
+    }
+    .robot-card-anchor.pending {
+      border-color: rgba(191, 67, 66, 0.3);
+      background: rgba(191, 67, 66, 0.07);
+      color: #8c2b2b;
+    }
+    .robot-card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .compact-copy {
+      margin-top: 10px;
+    }
     @media (max-width: 980px) {
-      .app { grid-template-columns: 1fr; }
-      .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
-      canvas { height: 65vh; min-height: 420px; }
+      body {
+        height: auto;
+        min-height: 100vh;
+        overflow: auto;
+      }
+      .app {
+        grid-template-columns: 1fr;
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+      }
+      .sidebar {
+        height: auto;
+        max-height: 45vh;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .sidebar-resizer {
+        display: none;
+      }
+      .sidebar-shell {
+        grid-template-columns: 1fr;
+      }
+      .sidebar-tabs {
+        flex-direction: row;
+        justify-content: flex-start;
+        padding: 14px 14px 0;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .sidebar-tab {
+        writing-mode: horizontal-tb;
+        min-height: auto;
+        width: auto;
+        min-width: 96px;
+        padding: 8px 12px;
+        border-radius: 12px;
+        letter-spacing: 0.02em;
+      }
+      .sidebar-content {
+        height: auto;
+        max-height: calc(45vh - 62px);
+        padding-top: 14px;
+      }
+      .main {
+        position: relative;
+        height: 65vh;
+        min-height: 420px;
+        gap: 14px;
+        padding: 14px;
+      }
+      .map-wrap {
+        position: relative;
+      }
+      canvas {
+        height: 100%;
+        min-height: 420px;
+      }
     }
   </style>
 </head>
 <body>
   <div class="app">
     <aside class="sidebar">
-      <h1>任务规划控制台</h1>
-      <p class="muted">支持手选任务点、框选范围、语义任务三种入口，并直接展示三只机器狗的规划结果。</p>
-
-      <div class="status" id="statusBox">正在加载规划资产...</div>
-
-      <div class="card">
-        <h2>工作模式</h2>
-        <div class="toolbar">
-          <button id="manualModeBtn" class="primary">手选任务点</button>
-          <button id="polygonModeBtn" class="secondary">框选范围</button>
-          <button id="clearSelectionBtn">清空已选点</button>
-          <button id="clearPolygonBtn">清空范围</button>
-          <button id="resetViewBtn">重置视图</button>
+      <div class="sidebar-shell">
+        <div class="sidebar-tabs">
+          <button id="planningTabBtn" class="sidebar-tab active">路径规划</button>
+          <button id="robotInitTabBtn" class="sidebar-tab">机器狗初始化</button>
         </div>
-        <p class="muted" id="modeHint">当前模式：手选任务点。点击地图上的圆点即可增删目标点。</p>
-      </div>
+        <div class="sidebar-content">
+          <h1>任务规划控制台</h1>
+          <p class="muted">支持手选任务点、框选范围、语义任务三种入口，也支持在地图上配置任意数量机器狗的初始节点。</p>
 
-      <div class="card">
-        <h2>手选任务点</h2>
-        <div class="toolbar">
-          <button id="submitManualBtn" class="success">生成手选规划</button>
+          <div class="status" id="statusBox">正在加载规划资产...</div>
+
+          <section id="planningPanel" class="panel-view active">
+            <div class="card">
+              <h2>工作模式</h2>
+              <div class="toolbar">
+                <button id="manualModeBtn" class="primary">手选任务点</button>
+                <button id="polygonModeBtn" class="secondary">框选范围</button>
+                <button id="resetViewBtn">重置视图</button>
+              </div>
+              <p class="muted" id="modeHint">当前模式：手选任务点。点击地图上的圆点即可增删目标点；重置视图会同时清空预览路径、已选点和框选点。</p>
+              <p class="muted compact-copy" id="planningGuardHint">正在检查机器狗初始化配置...</p>
+            </div>
+
+            <div class="card">
+              <h2>手选任务点</h2>
+              <div class="toolbar">
+                <button id="submitManualBtn" class="success">生成手选规划</button>
+              </div>
+              <p class="muted">已选任务点会高亮显示，并出现在下方列表。</p>
+              <ol class="list" id="selectedNavList"></ol>
+            </div>
+
+            <div class="card">
+              <h2>框选范围</h2>
+              <div class="toolbar">
+                <button id="submitPolygonBtn" class="success">生成范围规划</button>
+              </div>
+              <p class="muted">切到框选范围模式后，在地图上依次点击范围顶点，形成闭合多边形后提交。</p>
+              <ol class="list" id="polygonVertexList"></ol>
+            </div>
+
+            <div class="card">
+              <h2>语义任务</h2>
+              <textarea id="semanticQuery" placeholder="例如：巡检所有教学楼设施&#10;或：巡检教12到教14楼&#10;或：巡检北门和南门"></textarea>
+              <div class="toolbar" style="margin-top: 10px;">
+                <button id="submitSemanticBtn" class="success">生成语义规划</button>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2>规划摘要</h2>
+              <div class="toolbar" style="margin-bottom: 10px;">
+                <button id="executePlanBtn" class="primary" disabled>先生成规划预览</button>
+              </div>
+              <p class="muted scroll-inline" id="planStorageHint">当前不会自动保存规划结果。点击“执行计划并保存”后，结果才会写入 data/outputs。</p>
+              <div class="kpis">
+                <div class="kpi">
+                  已分配目标
+                  <strong id="assignedCount">0</strong>
+                </div>
+                <div class="kpi">
+                  未分配目标
+                  <strong id="unassignedCount">0</strong>
+                </div>
+                <div class="kpi">
+                  总路径长度
+                  <strong id="totalDistance">0 m</strong>
+                </div>
+                <div class="kpi">
+                  当前计划 ID
+                  <strong id="currentPlanId" class="scroll-inline" style="font-size: 12px;">-</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2>机器人路线</h2>
+              <div id="robotPlans"></div>
+            </div>
+          </section>
+
+          <section id="robotInitPanel" class="panel-view">
+            <div class="card">
+              <h2>初始化说明</h2>
+              <p class="muted" id="robotInitHint">先输入机器狗数量，再为每台机器狗点击地图上的已有节点进行放置。位置可以重叠，但每台都会用独立颜色显示。</p>
+            </div>
+
+            <div class="card">
+              <h2>配置文件</h2>
+              <div class="toolbar">
+                <button id="reloadRobotConfigBtn">从配置文件加载</button>
+                <button id="saveRobotConfigBtn" class="primary">保存初始化配置</button>
+              </div>
+              <div class="robot-config-summary">
+                <div class="robot-config-item">
+                  配置文件路径
+                  <strong id="robotConfigPath" class="scroll-inline">-</strong>
+                </div>
+                <div class="robot-config-item">
+                  当前状态
+                  <strong id="robotConfigState">-</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2>机器狗数量</h2>
+              <label class="field-label" for="robotCountInput">输入本场景机器狗数量</label>
+              <input id="robotCountInput" type="number" min="1" max="32" value="3" />
+              <div class="toolbar" style="margin-top: 10px;">
+                <button id="applyRobotCountBtn" class="secondary">生成放置槽位</button>
+              </div>
+              <p class="muted" id="robotCountHint">改变数量后，已有放置会尽量保留；新增机器狗需要再到地图上选点。</p>
+            </div>
+
+            <div class="card">
+              <h2>位置放置</h2>
+              <p class="muted" id="robotPlacementHint">选择一台机器狗，然后在地图上点击已有任务点作为它的初始位置。</p>
+              <div class="robot-list" id="robotPlacementList"></div>
+            </div>
+          </section>
         </div>
-        <p class="muted">已选任务点会高亮显示，并出现在下方列表。</p>
-        <ol class="list" id="selectedNavList"></ol>
-      </div>
-
-      <div class="card">
-        <h2>框选范围</h2>
-        <div class="toolbar">
-          <button id="submitPolygonBtn" class="success">生成范围规划</button>
-        </div>
-        <p class="muted">切到框选范围模式后，在地图上依次点击范围顶点，形成闭合多边形后提交。</p>
-        <ol class="list" id="polygonVertexList"></ol>
-      </div>
-
-      <div class="card">
-        <h2>语义任务</h2>
-        <textarea id="semanticQuery" placeholder="例如：巡检所有教学楼设施&#10;或：巡检教12到教14楼&#10;或：巡检北门和南门"></textarea>
-        <div class="toolbar" style="margin-top: 10px;">
-          <button id="submitSemanticBtn" class="success">生成语义规划</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>规划摘要</h2>
-        <div class="kpis">
-          <div class="kpi">
-            已分配目标
-            <strong id="assignedCount">0</strong>
-          </div>
-          <div class="kpi">
-            未分配目标
-            <strong id="unassignedCount">0</strong>
-          </div>
-          <div class="kpi">
-            总路径长度
-            <strong id="totalDistance">0 m</strong>
-          </div>
-          <div class="kpi">
-            当前计划 ID
-            <strong id="currentPlanId" style="font-size: 12px;">-</strong>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>机器人路线</h2>
-        <div id="robotPlans"></div>
       </div>
     </aside>
+    <div class="sidebar-resizer" id="sidebarResizer" aria-hidden="true"></div>
 
     <main class="main">
+      <div class="scene-bar" id="sceneBarSection">
+        <div class="scene-bar-title">
+          <span class="scene-bar-dot"></span>
+          <div class="scene-bar-copy">
+            <span class="scene-bar-kicker">SCENE</span>
+            <span class="scene-bar-text">选择场景</span>
+          </div>
+        </div>
+        <div class="scene-bar-list" id="sceneBar"></div>
+      </div>
       <div class="map-wrap">
         <canvas id="mapCanvas"></canvas>
       </div>
-      <div class="legend">
-        <div class="legend-item"><span class="swatch" style="background:#8b6f47;"></span>场景边界</div>
-        <div class="legend-item"><span class="swatch" style="background:#d8c7b2;"></span>建筑</div>
-        <div class="legend-item"><span class="swatch" style="background:#87ab6d;"></span>用地/绿地</div>
-        <div class="legend-item"><span class="swatch" style="background:#c7c1b0;"></span>路网</div>
-        <div class="legend-item"><span class="swatch" style="background:#2b2b2b;"></span>任务点</div>
-        <div class="legend-item"><span class="swatch" style="background:#c75c2d;"></span>已选任务点</div>
-        <div class="legend-item"><span class="swatch" style="background:#d94841;"></span>slot_01</div>
-        <div class="legend-item"><span class="swatch" style="background:#2674f2;"></span>slot_02</div>
-        <div class="legend-item"><span class="swatch" style="background:#1a936f;"></span>slot_03</div>
-      </div>
+      <div class="legend" id="legendBar"></div>
     </main>
   </div>
 
   <script>
+    const robotColorPalette = [
+      '#d94841',
+      '#2674f2',
+      '#1a936f',
+      '#d97706',
+      '#7c3aed',
+      '#0f766e',
+      '#c026d3',
+      '#2563eb',
+      '#be123c',
+      '#4f46e5',
+      '#0ea5e9',
+      '#65a30d',
+    ];
+
     const state = {
       assets: null,
       bounds: null,
+      currentScene: null,
+      availableScenes: [],
+      activePanel: 'planning',
       mode: 'manual',
       selectedNavIds: new Set(),
       polygonVertices: [],
       plan: null,
       hoveredNavId: null,
+      robotConfig: null,
+      robotConfigDraft: null,
+      robotPlacementTargetIndex: null,
       view: {
         zoom: 1,
         minZoom: 1,
@@ -321,10 +746,26 @@
         moved: false,
         justDragged: false,
       },
+      sidebarResize: {
+        active: false,
+        startClientX: 0,
+        startWidth: 360,
+      },
     };
 
+    const app = document.querySelector('.app');
+    const sidebar = document.querySelector('.sidebar');
+    const sidebarResizer = document.getElementById('sidebarResizer');
+    const planningTabBtn = document.getElementById('planningTabBtn');
+    const robotInitTabBtn = document.getElementById('robotInitTabBtn');
+    const planningPanel = document.getElementById('planningPanel');
+    const robotInitPanel = document.getElementById('robotInitPanel');
     const statusBox = document.getElementById('statusBox');
     const modeHint = document.getElementById('modeHint');
+    const planningGuardHint = document.getElementById('planningGuardHint');
+    const sceneBar = document.getElementById('sceneBar');
+    const sceneBarSection = document.getElementById('sceneBarSection');
+    const legendBar = document.getElementById('legendBar');
     const selectedNavList = document.getElementById('selectedNavList');
     const polygonVertexList = document.getElementById('polygonVertexList');
     const assignedCount = document.getElementById('assignedCount');
@@ -332,12 +773,121 @@
     const totalDistance = document.getElementById('totalDistance');
     const currentPlanId = document.getElementById('currentPlanId');
     const robotPlans = document.getElementById('robotPlans');
+    const executePlanBtn = document.getElementById('executePlanBtn');
+    const planStorageHint = document.getElementById('planStorageHint');
     const semanticQuery = document.getElementById('semanticQuery');
+    const submitManualBtn = document.getElementById('submitManualBtn');
+    const submitPolygonBtn = document.getElementById('submitPolygonBtn');
+    const submitSemanticBtn = document.getElementById('submitSemanticBtn');
+    const robotInitHint = document.getElementById('robotInitHint');
+    const robotConfigPath = document.getElementById('robotConfigPath');
+    const robotConfigState = document.getElementById('robotConfigState');
+    const robotCountInput = document.getElementById('robotCountInput');
+    const robotCountHint = document.getElementById('robotCountHint');
+    const robotPlacementHint = document.getElementById('robotPlacementHint');
+    const robotPlacementList = document.getElementById('robotPlacementList');
+    const reloadRobotConfigBtn = document.getElementById('reloadRobotConfigBtn');
+    const saveRobotConfigBtn = document.getElementById('saveRobotConfigBtn');
+    const applyRobotCountBtn = document.getElementById('applyRobotCountBtn');
     const canvas = document.getElementById('mapCanvas');
     const ctx = canvas.getContext('2d');
 
     const urlParams = new URLSearchParams(window.location.search);
     const initialPlanId = urlParams.get('plan_id');
+    const initialScene = urlParams.get('scene');
+
+    function cloneData(value) {
+      return value ? JSON.parse(JSON.stringify(value)) : value;
+    }
+
+    function robotColorForIndex(index) {
+      if (index <= robotColorPalette.length) {
+        return robotColorPalette[index - 1];
+      }
+      const hue = (index * 137.508) % 360;
+      return `hsl(${hue}, 66%, 46%)`;
+    }
+
+    function robotSlotId(index) {
+      return `slot_${String(index).padStart(2, '0')}`;
+    }
+
+    function robotHardwareId(index) {
+      return `cyberdog2_${String(index).padStart(2, '0')}`;
+    }
+
+    function robotDisplayName(index) {
+      return `机器狗 ${index}`;
+    }
+
+    function bindHorizontalWheelScroll() {
+      document.querySelectorAll('.scroll-inline').forEach((element) => {
+        if (element.dataset.wheelBound === 'true') {
+          return;
+        }
+        element.dataset.wheelBound = 'true';
+        element.addEventListener('wheel', (event) => {
+          if (element.scrollWidth <= element.clientWidth) {
+            return;
+          }
+          const horizontalDelta = Math.abs(event.deltaX) > 0 ? event.deltaX : event.deltaY;
+          if (horizontalDelta === 0) {
+            return;
+          }
+          event.preventDefault();
+          element.scrollLeft += horizontalDelta;
+        }, { passive: false });
+      });
+    }
+
+    function clampSidebarWidth(width) {
+      const viewportWidth = window.innerWidth || 1280;
+      const minWidth = 300;
+      const maxWidth = Math.max(360, Math.min(760, viewportWidth - 360));
+      return clamp(width, minWidth, maxWidth);
+    }
+
+    function applySidebarWidth(width, { persist = true } = {}) {
+      if (window.innerWidth <= 980) {
+        return;
+      }
+      const nextWidth = clampSidebarWidth(width);
+      app.style.setProperty('--sidebar-width', `${nextWidth}px`);
+      if (persist) {
+        try {
+          window.localStorage.setItem('mission_planner_sidebar_width', String(Math.round(nextWidth)));
+        } catch (error) {
+          // Ignore localStorage failures and keep the in-memory width.
+        }
+      }
+    }
+
+    function restoreSidebarWidth() {
+      if (window.innerWidth <= 980) {
+        app.style.removeProperty('--sidebar-width');
+        return;
+      }
+      let savedWidth = 360;
+      try {
+        const raw = window.localStorage.getItem('mission_planner_sidebar_width');
+        if (raw) {
+          const parsed = Number(raw);
+          if (Number.isFinite(parsed)) {
+            savedWidth = parsed;
+          }
+        }
+      } catch (error) {
+        // Ignore localStorage failures and fall back to default width.
+      }
+      applySidebarWidth(savedWidth, { persist: false });
+    }
+
+    function setSidebarResizeActive(active) {
+      state.sidebarResize.active = active;
+      sidebarResizer.classList.toggle('dragging', active);
+      document.body.style.cursor = active ? 'col-resize' : '';
+      document.body.style.userSelect = active ? 'none' : '';
+    }
 
     function setStatus(text, isError = false) {
       statusBox.textContent = text;
@@ -360,6 +910,130 @@
 
     function updateCanvasCursor() {
       canvas.style.cursor = state.drag.active ? 'grabbing' : 'grab';
+    }
+
+    function findNavById(navId) {
+      return (state.assets?.nav_points || []).find((item) => item.id === navId) || null;
+    }
+
+    function buildRobotPoseFromNav(nav) {
+      if (!nav) {
+        return null;
+      }
+      return {
+        anchor_nav_point_id: nav.id,
+        anchor_name: nav.name,
+        anchor_local_m: {
+          x: Number(nav.local_x),
+          z: Number(nav.local_z),
+        },
+        offset_from_anchor_local_m: {
+          x: 0,
+          z: 0,
+        },
+        resolved_local_position_m: {
+          x: Number(nav.local_x),
+          z: Number(nav.local_z),
+        },
+        heading_rad: Number(nav.yaw || 0),
+      };
+    }
+
+    function buildDraftRobot(index, anchorNavPointId = null, seed = {}) {
+      const nav = anchorNavPointId ? findNavById(anchorNavPointId) : null;
+      const pose = buildRobotPoseFromNav(nav);
+      return {
+        index,
+        planning_slot_id: seed.planning_slot_id || robotSlotId(index),
+        hardware_id: seed.hardware_id || robotHardwareId(index),
+        display_name: seed.display_name || robotDisplayName(index),
+        color: seed.color || robotColorForIndex(index),
+        placed: Boolean(nav),
+        anchor_nav_point_id: nav ? nav.id : null,
+        anchor_nav_point_name: nav ? nav.name : '',
+        start_nav_point_id: nav ? nav.id : null,
+        home_nav_point_id: nav ? nav.id : null,
+        start_pose: cloneData(pose),
+        home_pose: cloneData(pose),
+      };
+    }
+
+    function decorateRobotDraft(robots, source = 'draft') {
+      const placedRobotIds = robots.filter((robot) => robot.placed).map((robot) => robot.planning_slot_id);
+      const unplacedRobotIds = robots.filter((robot) => !robot.placed).map((robot) => robot.planning_slot_id);
+      return {
+        schema_version: '1.0.0',
+        scene_name: state.currentScene,
+        robot_count: robots.length,
+        all_robots_placed: unplacedRobotIds.length === 0,
+        placed_robot_ids: placedRobotIds,
+        unplaced_robot_ids: unplacedRobotIds,
+        config_path: state.robotConfig?.config_path || '',
+        source,
+        updated_at: state.robotConfig?.updated_at || null,
+        robots,
+      };
+    }
+
+    function buildRobotConfigDraft(robotCount, sourceRobots = []) {
+      const count = clamp(Number(robotCount) || 1, 1, 32);
+      const robots = [];
+      for (let index = 1; index <= count; index += 1) {
+        const seed = sourceRobots[index - 1] || {};
+        robots.push(buildDraftRobot(index, seed.anchor_nav_point_id || null, seed));
+      }
+      return decorateRobotDraft(robots);
+    }
+
+    function firstUnplacedRobotIndex(robotConfig) {
+      if (!robotConfig) {
+        return null;
+      }
+      const found = robotConfig.robots.find((robot) => !robot.placed);
+      return found ? found.index : (robotConfig.robots[0]?.index || null);
+    }
+
+    function displayedRobots() {
+      if (state.activePanel === 'robot' && state.robotConfigDraft) {
+        return state.robotConfigDraft.robots;
+      }
+      return state.assets?.robots || [];
+    }
+
+    function planningBlockedReason() {
+      if (!state.robotConfig) {
+        return '正在加载机器狗初始化配置...';
+      }
+      if (!state.robotConfig.all_robots_placed) {
+        return `请先在“机器狗初始化”页完成 ${state.robotConfig.unplaced_robot_ids.join('、')} 的位置放置并保存配置。`;
+      }
+      return '';
+    }
+
+    function robotDraftDirty() {
+      if (!state.robotConfig || !state.robotConfigDraft) {
+        return false;
+      }
+      if (state.robotConfig.robot_count !== state.robotConfigDraft.robot_count) {
+        return true;
+      }
+      return state.robotConfigDraft.robots.some((robot, index) => (
+        robot.anchor_nav_point_id !== (state.robotConfig.robots[index]?.anchor_nav_point_id || null)
+      ));
+    }
+
+    function setActivePanel(panel) {
+      state.activePanel = panel;
+      planningTabBtn.classList.toggle('active', panel === 'planning');
+      robotInitTabBtn.classList.toggle('active', panel === 'robot');
+      planningPanel.classList.toggle('active', panel === 'planning');
+      robotInitPanel.classList.toggle('active', panel === 'robot');
+      if (panel === 'robot' && state.robotConfigDraft && state.robotPlacementTargetIndex == null) {
+        state.robotPlacementTargetIndex = firstUnplacedRobotIndex(state.robotConfigDraft);
+      }
+      renderLegend();
+      renderRobotInitialization();
+      draw();
     }
 
     function computeBounds() {
@@ -619,23 +1293,60 @@
     }
 
     function drawRobotAnchors() {
-      state.assets.robots.forEach((robot) => {
-        const start = robot.start_pose.resolved_local_position_m;
-        const home = robot.home_pose.resolved_local_position_m;
-        const startPoint = localToCanvas(start.x, start.z);
-        const homePoint = localToCanvas(home.x, home.z);
-        ctx.fillStyle = robot.planning_slot_id === 'slot_01' ? '#d94841' : robot.planning_slot_id === 'slot_02' ? '#2674f2' : '#1a936f';
-        ctx.fillRect(startPoint.x - 4, startPoint.y - 4, 8, 8);
-        ctx.beginPath();
-        ctx.arc(homePoint.x, homePoint.y, 6, 0, Math.PI * 2);
-        ctx.strokeStyle = ctx.fillStyle;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+      const grouped = new Map();
+      displayedRobots().forEach((robot) => {
+        if (!robot?.placed || !robot?.start_pose?.resolved_local_position_m) {
+          return;
+        }
+        const key = robot.anchor_nav_point_id || `${robot.start_pose.resolved_local_position_m.x}:${robot.start_pose.resolved_local_position_m.z}`;
+        const bucket = grouped.get(key) || [];
+        bucket.push(robot);
+        grouped.set(key, bucket);
+      });
+
+      grouped.forEach((robots) => {
+        const anchor = robots[0].start_pose.resolved_local_position_m;
+        const anchorPoint = localToCanvas(anchor.x, anchor.z);
+        robots.forEach((robot, index) => {
+          const total = robots.length;
+          const radius = total > 1 ? 12 : 0;
+          const angle = total > 1 ? (-Math.PI / 2) + ((Math.PI * 2 * index) / total) : 0;
+          const offsetX = Math.cos(angle) * radius;
+          const offsetY = Math.sin(angle) * radius;
+          const pointX = anchorPoint.x + offsetX;
+          const pointY = anchorPoint.y + offsetY;
+          const color = robot.color || '#444444';
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(pointX, pointY, 7, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.94)';
+          ctx.stroke();
+
+          ctx.fillStyle = 'white';
+          ctx.font = '10px "Noto Sans SC", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(robot.index || index + 1), pointX, pointY);
+
+          if (total > 1) {
+            ctx.beginPath();
+            ctx.moveTo(anchorPoint.x, anchorPoint.y);
+            ctx.lineTo(pointX, pointY);
+            ctx.strokeStyle = 'rgba(31, 111, 139, 0.28)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+          ctx.restore();
+        });
       });
     }
 
     function drawPlan() {
-      if (!state.plan) {
+      if (!state.plan || state.activePanel === 'robot') {
         return;
       }
       state.plan.robots.forEach((robot) => {
@@ -703,12 +1414,151 @@
       });
     }
 
+    function renderLegend() {
+      legendBar.innerHTML = '';
+      const staticItems = [
+        { color: '#8b6f47', label: '场景边界' },
+        { color: '#d8c7b2', label: '建筑' },
+        { color: '#87ab6d', label: '用地/绿地' },
+        { color: '#c7c1b0', label: '路网' },
+        { color: '#2b2b2b', label: '任务点' },
+        { color: '#c75c2d', label: '已选任务点' },
+      ];
+      const robots = displayedRobots().filter((robot) => robot?.color);
+      [...staticItems, ...robots.map((robot) => ({
+        color: robot.color,
+        label: `${robot.display_name || robot.planning_slot_id}${robot.placed ? '' : ' (待放置)'}`,
+      }))].forEach((item) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'legend-item';
+        wrapper.innerHTML = `<span class="swatch" style="background:${item.color};"></span>${item.label}`;
+        legendBar.appendChild(wrapper);
+      });
+    }
+
+    function renderPlanningGuard() {
+      const blockedReason = planningBlockedReason();
+      const planningReady = !blockedReason;
+      planningGuardHint.textContent = planningReady
+        ? `当前共加载 ${state.robotConfig?.robot_count || 0} 台机器狗配置，已可生成规划。`
+        : blockedReason;
+      submitManualBtn.disabled = !planningReady;
+      submitPolygonBtn.disabled = !planningReady;
+      submitSemanticBtn.disabled = !planningReady;
+    }
+
+    function renderRobotInitialization() {
+      const config = state.robotConfigDraft;
+      if (!config) {
+        robotConfigPath.textContent = '-';
+        robotConfigState.textContent = '未加载';
+        robotCountInput.value = '1';
+        robotPlacementHint.textContent = '等待场景资产加载完成后再初始化机器狗。';
+        robotPlacementList.innerHTML = '<p class="muted">暂无机器狗槽位。</p>';
+        return;
+      }
+
+      robotConfigPath.textContent = config.config_path || '-';
+      robotConfigPath.title = robotConfigPath.textContent;
+      const dirty = robotDraftDirty();
+      if (dirty) {
+        robotConfigState.textContent = '有未保存修改';
+      } else if (config.all_robots_placed) {
+        robotConfigState.textContent = `已完成 ${config.robot_count} / ${config.robot_count}`;
+      } else {
+        robotConfigState.textContent = `待放置 ${config.unplaced_robot_ids.length} 台`;
+      }
+      robotCountInput.value = String(config.robot_count);
+      robotInitHint.textContent = config.all_robots_placed
+        ? '当前配置已经可用于规划。若需修改数量或位置，可先调整槽位，再点击地图重新放置。'
+        : `当前还需要为 ${config.unplaced_robot_ids.join('、')} 指定节点，完成后记得保存初始化配置。`;
+      robotCountHint.textContent = '改变数量后，已有放置会尽量保留；新增机器狗需要再到地图上选点。';
+
+      const selectedRobot = config.robots.find((robot) => robot.index === state.robotPlacementTargetIndex) || null;
+      robotPlacementHint.textContent = selectedRobot
+        ? `当前正在为 ${selectedRobot.display_name} 选点，点击地图上的已有任务点即可放置。`
+        : '选择一台机器狗，然后在地图上点击已有任务点作为它的初始位置。';
+
+      robotPlacementList.innerHTML = '';
+      config.robots.forEach((robot) => {
+        const card = document.createElement('div');
+        card.className = `robot-card${robot.index === state.robotPlacementTargetIndex ? ' active' : ''}`;
+
+        const head = document.createElement('div');
+        head.className = 'robot-card-head';
+
+        const title = document.createElement('div');
+        title.className = 'robot-card-title';
+        title.innerHTML = `
+          <span class="robot-color" style="background:${robot.color};"></span>
+          <div>
+            <div class="robot-card-name">${robot.display_name}</div>
+            <div class="robot-card-meta">${robot.planning_slot_id} / ${robot.hardware_id}</div>
+          </div>
+        `;
+
+        const stateText = document.createElement('div');
+        stateText.className = 'robot-card-meta';
+        stateText.textContent = robot.placed ? '已放置' : '待放置';
+        head.appendChild(title);
+        head.appendChild(stateText);
+
+        const anchor = document.createElement('div');
+        anchor.className = `robot-card-anchor${robot.placed ? '' : ' pending'}`;
+        anchor.textContent = robot.placed
+          ? `当前位置：${robot.anchor_nav_point_id} ${robot.anchor_nav_point_name}`
+          : '当前位置：尚未选择，请点击地图上的已有任务点';
+
+        const actions = document.createElement('div');
+        actions.className = 'robot-card-actions';
+
+        const selectBtn = document.createElement('button');
+        selectBtn.type = 'button';
+        selectBtn.className = robot.index === state.robotPlacementTargetIndex ? 'primary' : '';
+        selectBtn.textContent = robot.index === state.robotPlacementTargetIndex ? '正在地图选点' : '选择地图节点';
+        selectBtn.addEventListener('click', () => {
+          state.robotPlacementTargetIndex = robot.index;
+          renderRobotInitialization();
+          draw();
+        });
+
+        const clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.className = 'danger';
+        clearBtn.textContent = '清空位置';
+        clearBtn.disabled = !robot.placed;
+        clearBtn.addEventListener('click', () => {
+          const nextRobots = config.robots.map((item) => (
+            item.index === robot.index ? buildDraftRobot(item.index) : item
+          ));
+          state.robotConfigDraft = decorateRobotDraft(nextRobots, 'draft');
+          state.robotPlacementTargetIndex = robot.index;
+          renderRobotInitialization();
+          renderLegend();
+          draw();
+        });
+
+        actions.appendChild(selectBtn);
+        actions.appendChild(clearBtn);
+
+        card.appendChild(head);
+        card.appendChild(anchor);
+        card.appendChild(actions);
+        robotPlacementList.appendChild(card);
+      });
+    }
+
     function renderPlanSummary() {
       if (!state.plan) {
         assignedCount.textContent = '0';
         unassignedCount.textContent = '0';
         totalDistance.textContent = '0 m';
         currentPlanId.textContent = '-';
+        currentPlanId.title = '-';
+        executePlanBtn.disabled = true;
+        executePlanBtn.textContent = '先生成规划预览';
+        planStorageHint.textContent = '当前不会自动保存规划结果。点击“执行计划并保存”后，结果才会写入 data/outputs。';
+        planStorageHint.title = planStorageHint.textContent;
         robotPlans.innerHTML = '<p class="muted">当前还没有规划结果。</p>';
         return;
       }
@@ -716,6 +1566,15 @@
       unassignedCount.textContent = String(state.plan.summary.unassigned_count);
       totalDistance.textContent = `${state.plan.summary.total_distance_m.toFixed(1)} m`;
       currentPlanId.textContent = state.plan.plan_id;
+      currentPlanId.title = currentPlanId.textContent;
+      const persistence = state.plan.persistence || {};
+      const isSaved = Boolean(persistence.saved);
+      executePlanBtn.disabled = isSaved;
+      executePlanBtn.textContent = isSaved ? '已执行并保存' : '执行计划并保存';
+      planStorageHint.textContent = isSaved
+        ? `规划结果已保存到 ${persistence.output_dir || 'data/outputs'}`
+        : `当前为预览计划，尚未保存。点击“执行计划并保存”后会写入 ${persistence.output_dir || 'data/outputs'}`;
+      planStorageHint.title = planStorageHint.textContent;
 
       robotPlans.innerHTML = '';
       state.plan.robots.forEach((robot) => {
@@ -723,7 +1582,7 @@
         wrapper.className = 'plan-robot';
         wrapper.style.borderLeftColor = robot.color || '#444444';
         const title = document.createElement('strong');
-        title.textContent = `${robot.planning_slot_id} / ${robot.hardware_id}`;
+        title.textContent = `${robot.display_name || robot.planning_slot_id} / ${robot.hardware_id}`;
         const detail = document.createElement('div');
         detail.className = 'muted';
         const routeNames = (robot.route_nav_points || []).map((item) => item.name).join(' -> ') || '未分配目标';
@@ -736,27 +1595,95 @@
       });
     }
 
+    function renderSceneBar() {
+      sceneBar.innerHTML = '';
+      if (!state.availableScenes.length) {
+        sceneBarSection.style.display = 'none';
+        return;
+      }
+      sceneBarSection.style.display = 'flex';
+      state.availableScenes.forEach((sceneName) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `scene-chip${sceneName === state.currentScene ? ' active' : ''}`;
+        button.textContent = sceneName;
+        button.disabled = sceneName === state.currentScene;
+        button.addEventListener('click', async () => {
+          try {
+            await switchScene(sceneName);
+          } catch (error) {
+            setStatus(error.message, true);
+          }
+        });
+        sceneBar.appendChild(button);
+      });
+    }
+
     function setMode(mode) {
       state.mode = mode;
       if (mode === 'manual') {
-        modeHint.textContent = '当前模式：手选任务点。点击地图上的圆点即可增删目标点。';
+        modeHint.textContent = '当前模式：手选任务点。点击地图上的圆点即可增删目标点；重置视图会同时清空预览路径、已选点和框选点。';
       } else {
-        modeHint.textContent = '当前模式：框选范围。在地图上依次点击顶点形成闭合多边形，再提交范围规划。';
+        modeHint.textContent = '当前模式：框选范围。在地图上依次点击顶点形成闭合多边形，再提交范围规划；重置视图会同时清空预览路径、已选点和框选点。';
       }
       draw();
     }
 
-    async function loadAssets() {
-      const response = await fetch('/api/planner/interactive/assets');
-      if (!response.ok) {
-        throw new Error(`assets load failed: ${response.status}`);
-      }
-      state.assets = await response.json();
+    function resetPlannerView() {
+      state.selectedNavIds.clear();
+      state.polygonVertices = [];
+      state.plan = null;
+      state.hoveredNavId = null;
       computeBounds();
       renderSelectedNavList();
       renderPolygonVertexList();
       renderPlanSummary();
       draw();
+      setStatus('视图已重置，当前预览路径、已选点和框选范围均已清空。');
+    }
+
+    function clearPlannerInteractionState() {
+      state.selectedNavIds.clear();
+      state.polygonVertices = [];
+      state.plan = null;
+      state.hoveredNavId = null;
+    }
+
+    async function loadAssets(sceneName = state.currentScene, { clearPlannerState = true } = {}) {
+      const query = sceneName ? `?scene=${encodeURIComponent(sceneName)}` : '';
+      const response = await fetch(`/api/planner/interactive/assets${query}`);
+      if (!response.ok) {
+        throw new Error(`assets load failed: ${response.status}`);
+      }
+      state.assets = await response.json();
+      state.currentScene = state.assets.current_scene || state.assets.scene_name || sceneName;
+      state.availableScenes = state.assets.available_scenes || [];
+      state.robotConfig = cloneData(state.assets.robot_config || null);
+      state.robotConfigDraft = state.robotConfig
+        ? buildRobotConfigDraft(state.robotConfig.robot_count, state.robotConfig.robots || [])
+        : null;
+      state.robotPlacementTargetIndex = firstUnplacedRobotIndex(state.robotConfigDraft);
+      renderSceneBar();
+      if (clearPlannerState) {
+        clearPlannerInteractionState();
+      }
+      computeBounds();
+      renderSelectedNavList();
+      renderPolygonVertexList();
+      renderPlanSummary();
+      renderPlanningGuard();
+      renderRobotInitialization();
+      renderLegend();
+      draw();
+    }
+
+    async function switchScene(sceneName) {
+      if (!sceneName || sceneName === state.currentScene) {
+        return;
+      }
+      setStatus(`正在切换场景 ${sceneName} ...`);
+      await loadAssets(sceneName);
+      setStatus(`已切换到场景 ${sceneName}，可以继续查看地图或重新生成规划。`);
     }
 
     async function loadPlan(planId) {
@@ -764,9 +1691,54 @@
       if (!response.ok) {
         throw new Error(`plan load failed: ${response.status}`);
       }
-      state.plan = await response.json();
+      const plan = await response.json();
+      if (plan.scene_name && plan.scene_name !== state.currentScene) {
+        await loadAssets(plan.scene_name);
+      }
+      state.plan = plan;
       renderPlanSummary();
       draw();
+    }
+
+    async function saveRobotConfig() {
+      if (!state.robotConfigDraft) {
+        throw new Error('请先加载场景资产');
+      }
+      setStatus('正在保存机器狗初始化配置...');
+      const response = await fetch('/api/planner/interactive/robots/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scene: state.currentScene,
+          robot_count: state.robotConfigDraft.robot_count,
+          robots: state.robotConfigDraft.robots.map((robot) => ({
+            anchor_nav_point_id: robot.anchor_nav_point_id,
+          })),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'save robot config failed');
+      }
+      await loadAssets(state.currentScene);
+      setStatus(`已保存机器狗初始化配置到 ${data.config_path}`);
+    }
+
+    async function reloadRobotConfig() {
+      setStatus('正在从本地配置文件重新加载机器狗初始化配置...');
+      await loadAssets(state.currentScene);
+      setStatus(`已从 ${state.robotConfig?.config_path || 'data/configs/robot_initialization'} 重新加载当前场景配置。`);
+    }
+
+    function applyRobotCountDraft() {
+      const nextCount = clamp(Number(robotCountInput.value) || 1, 1, 32);
+      const sourceRobots = state.robotConfigDraft?.robots || state.robotConfig?.robots || [];
+      state.robotConfigDraft = buildRobotConfigDraft(nextCount, sourceRobots);
+      state.robotPlacementTargetIndex = firstUnplacedRobotIndex(state.robotConfigDraft);
+      renderRobotInitialization();
+      renderLegend();
+      draw();
+      setStatus(`已生成 ${nextCount} 台机器狗的放置槽位。请继续在地图上为每台机器狗选择节点，然后保存配置。`);
     }
 
     async function submitPlan(url, payload, successLabel) {
@@ -783,7 +1755,29 @@
       state.plan = data;
       renderPlanSummary();
       draw();
-      setStatus(`${successLabel}，计划已生成：${data.plan_id}`);
+      setStatus(`${successLabel}，当前仅生成预览：${data.plan_id}。点击“执行计划并保存”后才会写入 data/outputs。`);
+    }
+
+    async function executeCurrentPlan() {
+      if (!state.plan || !state.plan.plan_id) {
+        throw new Error('请先生成一个规划预览');
+      }
+      if (state.plan.persistence && state.plan.persistence.saved) {
+        setStatus(`该计划已保存到 ${state.plan.persistence.output_dir}`);
+        return;
+      }
+      setStatus('正在执行计划并保存结果...');
+      const response = await fetch(`/api/planner/interactive/plans/${encodeURIComponent(state.plan.plan_id)}/execute`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'execute plan failed');
+      }
+      state.plan = data;
+      renderPlanSummary();
+      draw();
+      setStatus(`计划已执行并保存到 ${data.persistence?.output_dir || 'data/outputs'}`);
     }
 
     canvas.addEventListener('mousemove', (event) => {
@@ -797,6 +1791,16 @@
       const nav = nearestNavAtCanvasPoint(event.clientX - rect.left, event.clientY - rect.top);
       state.hoveredNavId = nav ? nav.id : null;
       draw();
+    });
+
+    sidebarResizer.addEventListener('mousedown', (event) => {
+      if (window.innerWidth <= 980) {
+        return;
+      }
+      event.preventDefault();
+      state.sidebarResize.startClientX = event.clientX;
+      state.sidebarResize.startWidth = sidebar.getBoundingClientRect().width;
+      setSidebarResizeActive(true);
     });
 
     canvas.addEventListener('mousedown', (event) => {
@@ -823,6 +1827,33 @@
       const rect = canvas.getBoundingClientRect();
       const px = event.clientX - rect.left;
       const py = event.clientY - rect.top;
+      if (state.activePanel === 'robot') {
+        if (!state.robotConfigDraft) {
+          return;
+        }
+        if (state.robotPlacementTargetIndex == null) {
+          setStatus('请先在左侧选择一台机器狗，再点击地图节点进行放置。', true);
+          return;
+        }
+        const currentRobotIndex = state.robotPlacementTargetIndex;
+        const nav = nearestNavAtCanvasPoint(px, py);
+        if (!nav) {
+          return;
+        }
+        const nextRobots = state.robotConfigDraft.robots.map((robot) => (
+          robot.index === currentRobotIndex
+            ? buildDraftRobot(robot.index, nav.id, robot)
+            : robot
+        ));
+        state.robotConfigDraft = decorateRobotDraft(nextRobots, 'draft');
+        const nextUnplaced = state.robotConfigDraft.robots.find((robot) => !robot.placed);
+        state.robotPlacementTargetIndex = nextUnplaced ? nextUnplaced.index : currentRobotIndex;
+        renderRobotInitialization();
+        renderLegend();
+        draw();
+        setStatus(`已为 ${robotDisplayName(currentRobotIndex)} 选择位置：${nav.id} ${nav.name}。记得保存初始化配置。`);
+        return;
+      }
       if (state.mode === 'manual') {
         const nav = nearestNavAtCanvasPoint(px, py);
         if (!nav) {
@@ -865,6 +1896,12 @@
     }, { passive: false });
 
     window.addEventListener('mousemove', (event) => {
+      if (state.sidebarResize.active) {
+        const deltaX = event.clientX - state.sidebarResize.startClientX;
+        applySidebarWidth(state.sidebarResize.startWidth + deltaX, { persist: false });
+        resizeCanvas();
+        return;
+      }
       if (!state.drag.active || !state.assets || !state.bounds) {
         return;
       }
@@ -880,6 +1917,10 @@
     });
 
     window.addEventListener('mouseup', () => {
+      if (state.sidebarResize.active) {
+        applySidebarWidth(sidebar.getBoundingClientRect().width);
+        setSidebarResizeActive(false);
+      }
       if (!state.drag.active) {
         return;
       }
@@ -888,21 +1929,32 @@
       updateCanvasCursor();
     });
 
+    planningTabBtn.addEventListener('click', () => setActivePanel('planning'));
+    robotInitTabBtn.addEventListener('click', () => setActivePanel('robot'));
+
     document.getElementById('manualModeBtn').addEventListener('click', () => setMode('manual'));
     document.getElementById('polygonModeBtn').addEventListener('click', () => setMode('polygon'));
-    document.getElementById('clearSelectionBtn').addEventListener('click', () => {
-      state.selectedNavIds.clear();
-      renderSelectedNavList();
-      draw();
+    document.getElementById('resetViewBtn').addEventListener('click', resetPlannerView);
+    reloadRobotConfigBtn.addEventListener('click', async () => {
+      try {
+        await reloadRobotConfig();
+      } catch (error) {
+        setStatus(error.message, true);
+      }
     });
-    document.getElementById('clearPolygonBtn').addEventListener('click', () => {
-      state.polygonVertices = [];
-      renderPolygonVertexList();
-      draw();
+    saveRobotConfigBtn.addEventListener('click', async () => {
+      try {
+        await saveRobotConfig();
+      } catch (error) {
+        setStatus(error.message, true);
+      }
     });
-    document.getElementById('resetViewBtn').addEventListener('click', () => {
-      computeBounds();
-      draw();
+    applyRobotCountBtn.addEventListener('click', () => {
+      try {
+        applyRobotCountDraft();
+      } catch (error) {
+        setStatus(error.message, true);
+      }
     });
 
     document.getElementById('submitManualBtn').addEventListener('click', async () => {
@@ -910,6 +1962,7 @@
         await submitPlan('/api/planner/interactive/plans/manual', {
           nav_point_ids: Array.from(state.selectedNavIds),
           mission_label: 'console_manual_plan',
+          scene: state.currentScene,
         }, '手选任务点规划完成');
       } catch (error) {
         setStatus(error.message, true);
@@ -922,6 +1975,7 @@
           vertices: state.polygonVertices,
           coordinate_mode: 'local',
           mission_label: 'console_polygon_plan',
+          scene: state.currentScene,
         }, '范围规划完成');
       } catch (error) {
         setStatus(error.message, true);
@@ -933,24 +1987,39 @@
         await submitPlan('/api/planner/interactive/plans/semantic', {
           query: semanticQuery.value,
           use_llm: true,
+          scene: state.currentScene,
         }, '语义任务规划完成');
       } catch (error) {
         setStatus(error.message, true);
       }
     });
 
-    window.addEventListener('resize', resizeCanvas);
+    executePlanBtn.addEventListener('click', async () => {
+      try {
+        await executeCurrentPlan();
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      restoreSidebarWidth();
+      resizeCanvas();
+    });
 
     (async () => {
       try {
-        await loadAssets();
+        restoreSidebarWidth();
+        await loadAssets(initialScene);
         resizeCanvas();
         updateCanvasCursor();
+        bindHorizontalWheelScroll();
         if (initialPlanId) {
           await loadPlan(initialPlanId);
           setStatus(`已加载历史计划：${initialPlanId}`);
         } else {
-          setStatus('规划资产已加载，可以开始选点、框选或输入语义任务。');
+          const blockedReason = planningBlockedReason();
+          setStatus(blockedReason || `场景 ${state.currentScene} 已加载，可以开始选点、框选或输入语义任务。`);
         }
       } catch (error) {
         setStatus(error.message, true);

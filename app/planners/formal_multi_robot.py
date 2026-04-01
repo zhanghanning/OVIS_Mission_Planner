@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
+from app.planners.native_formal_multi_robot import solve_multi_robot_routes_native
+
 
 EPSILON = 1e-9
 CONSTRUCTION_MODES = ("regret", "constrained", "best_global")
@@ -881,7 +883,69 @@ def _run_heuristic_search(
     return state, unassigned
 
 
-def plan_multi_robot_routes(
+def _build_plan_result_payload(
+    planner_problem: Dict,
+    best_state: Dict,
+    best_unassigned: Set[str],
+    best_score: Tuple[Tuple[float, ...], float],
+    unique_target_ids: Sequence[str],
+    default_robot_ids: Sequence[str],
+    mission_context: Dict,
+) -> Dict:
+    robots_output = []
+    for robot_id in default_robot_ids:
+        robot = best_state[robot_id]["robot"]
+        metrics = best_state[robot_id]["metrics"]
+        robots_output.append(
+            {
+                "planning_slot_id": robot_id,
+                "hardware_id": robot["hardware_id"],
+                "route_nav_point_ids": list(best_state[robot_id]["route"]),
+                "total_distance_with_home_m": round(metrics["distance_m"], 3),
+                "estimated_time_with_home_s": round(metrics["estimated_time_s"], 3),
+                "effective_range_budget_m": best_state[robot_id]["budget_m"],
+                "feasible_with_budget": metrics["distance_m"] <= best_state[robot_id]["budget_m"] + EPSILON,
+                "legs": metrics["legs"],
+            }
+        )
+
+    assigned_count = len(unique_target_ids) - len(best_unassigned)
+    balanced_route_times = [round(value, 3) for value in best_score[0]]
+    active_robot_count = sum(1 for robot in robots_output if robot["route_nav_point_ids"])
+
+    return {
+        "schema_version": "1.0.0",
+        "planner_name": "heuristic_makespan_planner",
+        "planner_note": (
+            "Heuristic multi-robot planner for full mission coverage: uses constrained target insertion, route repair, "
+            "2-opt refinement, and inter-robot relocate/swap search to minimize the overall mission completion time, "
+            "then improve total travel distance under explicit range budgets."
+        ),
+        "mission_mode": mission_context.get("mission_mode", "unspecified"),
+        "mission_label": mission_context.get("mission_label", ""),
+        "mission_template_id": mission_context.get("mission_template_id"),
+        "natural_language": mission_context.get("natural_language", ""),
+        "target_set_ids": list(mission_context.get("target_set_ids", [])),
+        "target_nav_point_ids": list(unique_target_ids),
+        "robots": robots_output,
+        "unassigned_nav_point_ids": sorted(best_unassigned),
+        "summary": {
+            "target_count": len(unique_target_ids),
+            "assigned_count": assigned_count,
+            "unassigned_count": len(best_unassigned),
+            "full_coverage_achieved": len(best_unassigned) == 0,
+            "robot_count": len(robots_output),
+            "active_robot_count": active_robot_count,
+            "max_route_time_s": round(best_score[0][0] if best_score[0] else 0.0, 3),
+            "balanced_route_times_desc_s": balanced_route_times,
+            "total_estimated_time_s": round(sum(robot["estimated_time_with_home_s"] for robot in robots_output), 3),
+            "total_distance_m": round(sum(robot["total_distance_with_home_m"] for robot in robots_output), 3),
+        },
+        "request_context": mission_context,
+    }
+
+
+def _plan_multi_robot_routes_python(
     planner_problem: Dict,
     robot_to_nav_costs: Dict,
     nav_to_nav_costs: Dict,
@@ -931,57 +995,105 @@ def plan_multi_robot_routes(
         best_unassigned = set(unique_target_ids)
         best_score = _state_score(best_state, default_robot_ids)
 
-    robots_output = []
+    return _build_plan_result_payload(
+        planner_problem=planner_problem,
+        best_state=best_state,
+        best_unassigned=best_unassigned,
+        best_score=best_score,
+        unique_target_ids=unique_target_ids,
+        default_robot_ids=default_robot_ids,
+        mission_context=mission_context,
+    )
+
+
+def _try_native_plan_result(
+    planner_problem: Dict,
+    start_costs: Dict,
+    home_costs: Dict,
+    pair_costs: Dict,
+    unique_target_ids: Sequence[str],
+    default_robot_ids: Sequence[str],
+) -> Optional[Tuple[Dict, Set[str], Tuple[Tuple[float, ...], float]]]:
+    native_solution = solve_multi_robot_routes_native(
+        planner_problem=planner_problem,
+        start_costs=start_costs,
+        home_costs=home_costs,
+        pair_costs=pair_costs,
+        target_nav_ids=unique_target_ids,
+        max_improvement_passes=MAX_IMPROVEMENT_PASSES,
+    )
+    if native_solution is None:
+        return None
+
+    state = _build_state(planner_problem)
+    assigned_targets: Set[str] = set()
+
     for robot_id in default_robot_ids:
-        robot = best_state[robot_id]["robot"]
-        metrics = best_state[robot_id]["metrics"]
-        robots_output.append(
-            {
-                "planning_slot_id": robot_id,
-                "hardware_id": robot["hardware_id"],
-                "route_nav_point_ids": list(best_state[robot_id]["route"]),
-                "total_distance_with_home_m": round(metrics["distance_m"], 3),
-                "estimated_time_with_home_s": round(metrics["estimated_time_s"], 3),
-                "effective_range_budget_m": best_state[robot_id]["budget_m"],
-                "feasible_with_budget": metrics["distance_m"] <= best_state[robot_id]["budget_m"] + EPSILON,
-                "legs": metrics["legs"],
-            }
+        route = list(native_solution["routes_by_robot"].get(robot_id, []))
+        if len(route) != len(set(route)):
+            return None
+        if assigned_targets.intersection(route):
+            return None
+
+        metrics = _route_metrics(robot_id, route, start_costs, home_costs, pair_costs)
+        if not metrics["reachable"] or _float_greater(metrics["distance_m"], state[robot_id]["budget_m"]):
+            return None
+
+        state[robot_id]["route"] = route
+        state[robot_id]["metrics"] = metrics
+        assigned_targets.update(route)
+
+    unassigned_targets = set(native_solution.get("unassigned_nav_point_ids", []))
+    expected_targets = set(unique_target_ids)
+    if assigned_targets.intersection(unassigned_targets):
+        return None
+    if assigned_targets.union(unassigned_targets) != expected_targets:
+        return None
+
+    return state, unassigned_targets, _state_score(state, default_robot_ids)
+
+
+def plan_multi_robot_routes(
+    planner_problem: Dict,
+    robot_to_nav_costs: Dict,
+    nav_to_nav_costs: Dict,
+    target_nav_ids: Iterable[str],
+    mission_context: Optional[Dict] = None,
+) -> Dict:
+    mission_context = mission_context or {}
+    unique_target_ids = sorted(set(target_nav_ids))
+    start_costs = robot_to_nav_costs["start_to_nav_costs"]
+    home_costs = robot_to_nav_costs["nav_to_home_costs"]
+    pair_costs = nav_to_nav_costs["pairs"]
+    default_robot_ids = sorted(robot["planning_slot_id"] for robot in planner_problem["robots"])
+
+    native_result = _try_native_plan_result(
+        planner_problem=planner_problem,
+        start_costs=start_costs,
+        home_costs=home_costs,
+        pair_costs=pair_costs,
+        unique_target_ids=unique_target_ids,
+        default_robot_ids=default_robot_ids,
+    )
+    if native_result is not None:
+        best_state, best_unassigned, best_score = native_result
+        return _build_plan_result_payload(
+            planner_problem=planner_problem,
+            best_state=best_state,
+            best_unassigned=best_unassigned,
+            best_score=best_score,
+            unique_target_ids=unique_target_ids,
+            default_robot_ids=default_robot_ids,
+            mission_context=mission_context,
         )
 
-    assigned_count = len(unique_target_ids) - len(best_unassigned)
-    balanced_route_times = [round(value, 3) for value in best_score[0]]
-    active_robot_count = sum(1 for robot in robots_output if robot["route_nav_point_ids"])
-
-    return {
-        "schema_version": "1.0.0",
-        "planner_name": "heuristic_makespan_planner",
-        "planner_note": (
-            "Heuristic multi-robot planner for full mission coverage: uses constrained target insertion, route repair, "
-            "2-opt refinement, and inter-robot relocate/swap search to minimize the overall mission completion time, "
-            "then improve total travel distance under explicit range budgets."
-        ),
-        "mission_mode": mission_context.get("mission_mode", "unspecified"),
-        "mission_label": mission_context.get("mission_label", ""),
-        "mission_template_id": mission_context.get("mission_template_id"),
-        "natural_language": mission_context.get("natural_language", ""),
-        "target_set_ids": list(mission_context.get("target_set_ids", [])),
-        "target_nav_point_ids": unique_target_ids,
-        "robots": robots_output,
-        "unassigned_nav_point_ids": sorted(best_unassigned),
-        "summary": {
-            "target_count": len(unique_target_ids),
-            "assigned_count": assigned_count,
-            "unassigned_count": len(best_unassigned),
-            "full_coverage_achieved": len(best_unassigned) == 0,
-            "robot_count": len(robots_output),
-            "active_robot_count": active_robot_count,
-            "max_route_time_s": round(best_score[0][0] if best_score[0] else 0.0, 3),
-            "balanced_route_times_desc_s": balanced_route_times,
-            "total_estimated_time_s": round(sum(robot["estimated_time_with_home_s"] for robot in robots_output), 3),
-            "total_distance_m": round(sum(robot["total_distance_with_home_m"] for robot in robots_output), 3),
-        },
-        "request_context": mission_context,
-    }
+    return _plan_multi_robot_routes_python(
+        planner_problem=planner_problem,
+        robot_to_nav_costs=robot_to_nav_costs,
+        nav_to_nav_costs=nav_to_nav_costs,
+        target_nav_ids=unique_target_ids,
+        mission_context=mission_context,
+    )
 
 
 def plan_from_template_id(

@@ -57,6 +57,7 @@ class ManualPlanCreate(BaseModel):
     nav_point_ids: List[str]
     mission_label: Optional[str] = None
     notes: Optional[str] = None
+    scene: Optional[str] = None
 
 
 class PolygonVertex(BaseModel):
@@ -70,8 +71,20 @@ class PolygonPlanCreate(BaseModel):
     vertices: List[PolygonVertex]
     coordinate_mode: str = "local"
     mission_label: Optional[str] = None
+    scene: Optional[str] = None
 
 
 class SemanticPlanCreate(BaseModel):
     query: str
     use_llm: bool = True
+    scene: Optional[str] = None
+
+
+class RuntimeRobotConfigEntry(BaseModel):
+    anchor_nav_point_id: Optional[str] = None
+
+
+class RuntimeRobotConfigUpdate(BaseModel):
+    robot_count: int = Field(ge=1, le=32)
+    robots: List[RuntimeRobotConfigEntry] = Field(default_factory=list)
+    scene: Optional[str] = None

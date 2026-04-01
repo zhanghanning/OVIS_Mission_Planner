@@ -5,14 +5,21 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, RedirectResponse
 
-from app.models.schemas import ManualPlanCreate, PolygonPlanCreate, SemanticPlanCreate
+from app.models.schemas import (
+    ManualPlanCreate,
+    PolygonPlanCreate,
+    RuntimeRobotConfigUpdate,
+    SemanticPlanCreate,
+)
 from app.services.interactive_plan_service import (
     create_manual_plan,
     create_polygon_plan,
     create_semantic_plan,
+    execute_plan,
     get_console_payload,
     get_plan,
 )
+from app.services.runtime_robot_service import get_runtime_robot_config, save_runtime_robot_config
 from app.services.semantic_llm_service import semantic_llm_provider_status
 
 
@@ -22,13 +29,42 @@ CONSOLE_HTML_PATH = Path(__file__).resolve().parent.parent / "static" / "plannin
 
 
 @router.get("/assets")
-def interactive_assets():
-    return get_console_payload()
+def interactive_assets(scene: str | None = None):
+    try:
+        return get_console_payload(scene)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="scene not found") from exc
 
 
 @router.get("/semantic/provider-status")
 def interactive_semantic_provider_status():
     return semantic_llm_provider_status()
+
+
+@router.get("/robots/config")
+def interactive_robot_config(scene: str | None = None):
+    try:
+        return get_runtime_robot_config(scene)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="scene not found") from exc
+
+
+@router.put("/robots/config")
+def update_interactive_robot_config(payload: RuntimeRobotConfigUpdate):
+    try:
+        return save_runtime_robot_config(
+            scene_name=payload.scene,
+            robot_count=payload.robot_count,
+            robots=[robot.model_dump(exclude_none=True) for robot in payload.robots],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="scene not found") from exc
 
 
 @router.get("/console")
@@ -43,6 +79,7 @@ def create_manual_interactive_plan(payload: ManualPlanCreate):
             nav_point_ids=payload.nav_point_ids,
             mission_label=payload.mission_label or "",
             notes=payload.notes or "",
+            scene_name=payload.scene,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -56,6 +93,7 @@ def create_polygon_interactive_plan(payload: PolygonPlanCreate):
             vertices=vertices,
             coordinate_mode=payload.coordinate_mode,
             mission_label=payload.mission_label or "",
+            scene_name=payload.scene,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -64,7 +102,7 @@ def create_polygon_interactive_plan(payload: PolygonPlanCreate):
 @router.post("/plans/semantic")
 def create_semantic_interactive_plan(payload: SemanticPlanCreate):
     try:
-        return create_semantic_plan(query=payload.query, use_llm=payload.use_llm)
+        return create_semantic_plan(query=payload.query, use_llm=payload.use_llm, scene_name=payload.scene)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -73,6 +111,14 @@ def create_semantic_interactive_plan(payload: SemanticPlanCreate):
 def get_interactive_plan(plan_id: str):
     try:
         return get_plan(plan_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="interactive plan not found") from exc
+
+
+@router.post("/plans/{plan_id}/execute")
+def execute_interactive_plan(plan_id: str):
+    try:
+        return execute_plan(plan_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="interactive plan not found") from exc
 

@@ -341,10 +341,10 @@ def _standalone_nav_match(query: str, semantic_catalog: Dict) -> Optional[Dict]:
     }
 
 
-def _resolve_with_llm(query: str) -> Optional[Dict]:
-    target_sets = load_target_sets()
-    semantic_catalog = load_semantic_catalog()
-    parsed = resolve_semantic_selection_with_llm(query, target_sets, semantic_catalog)
+def _resolve_with_llm(query: str, scene_name: str | None = None) -> Optional[Dict]:
+    target_sets = load_target_sets(scene_name)
+    semantic_catalog = load_semantic_catalog(scene_name)
+    parsed = resolve_semantic_selection_with_llm(query, target_sets, semantic_catalog, scene_name)
     if not parsed:
         return None
 
@@ -378,7 +378,7 @@ def _resolve_with_llm(query: str) -> Optional[Dict]:
     }
 
 
-def resolve_semantic_targets(query: str, use_llm: bool = True) -> Dict:
+def resolve_semantic_targets(query: str, use_llm: bool = True, scene_name: str | None = None) -> Dict:
     query = (query or "").strip()
     if not query:
         return {
@@ -392,9 +392,9 @@ def resolve_semantic_targets(query: str, use_llm: bool = True) -> Dict:
             "llm_attempted": False,
         }
 
-    mission_templates = load_mission_templates()
-    semantic_catalog = load_semantic_catalog()
-    target_sets = load_target_sets()
+    mission_templates = load_mission_templates(scene_name)
+    semantic_catalog = load_semantic_catalog(scene_name)
+    target_sets = load_target_sets(scene_name)
 
     for resolver in (
         lambda: _local_template_match(query, mission_templates),
@@ -412,7 +412,7 @@ def resolve_semantic_targets(query: str, use_llm: bool = True) -> Dict:
 
     if use_llm:
         try:
-            resolution = _resolve_with_llm(query)
+            resolution = _resolve_with_llm(query, scene_name)
             if resolution and resolution["resolved_nav_point_ids"]:
                 resolution["query"] = query
                 resolution["llm_attempted"] = True
@@ -433,8 +433,8 @@ def resolve_semantic_targets(query: str, use_llm: bool = True) -> Dict:
     }
 
 
-def expand_target_set_ids(target_set_ids: List[str]) -> List[str]:
-    target_set_map = {item["target_set_id"]: item for item in load_target_sets()["target_sets"]}
+def expand_target_set_ids(target_set_ids: List[str], scene_name: str | None = None) -> List[str]:
+    target_set_map = {item["target_set_id"]: item for item in load_target_sets(scene_name)["target_sets"]}
     nav_ids: List[str] = []
     for target_set_id in target_set_ids:
         target_set = target_set_map.get(target_set_id)
@@ -443,6 +443,6 @@ def expand_target_set_ids(target_set_ids: List[str]) -> List[str]:
     return sorted(set(nav_ids))
 
 
-def validate_nav_point_ids(nav_point_ids: List[str]) -> List[str]:
-    valid_ids = set(nav_point_index())
+def validate_nav_point_ids(nav_point_ids: List[str], scene_name: str | None = None) -> List[str]:
+    valid_ids = set(nav_point_index(scene_name))
     return [nav_id for nav_id in nav_point_ids if nav_id in valid_ids]

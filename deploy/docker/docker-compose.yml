@@ -42,7 +42,7 @@ services:
       SEMANTIC_LLM_LOCAL_MAX_NEW_TOKENS: ${SEMANTIC_LLM_LOCAL_MAX_NEW_TOKENS}
       SEMANTIC_LLM_LOCAL_TRUST_REMOTE_CODE: ${SEMANTIC_LLM_LOCAL_TRUST_REMOTE_CODE}
     working_dir: /workspace/mission_planner
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8081"]
+    command: ["bash", "deploy/docker/start_planner_backend.sh"]
     volumes:
       - ${MISSION_PLANNER_PATH}:/workspace/mission_planner
       - ${LOCAL_MODEL_ROOT}:/workspace/models:ro
@@ -106,7 +106,7 @@ services:
       SEMANTIC_LLM_LOCAL_MAX_NEW_TOKENS: ${SEMANTIC_LLM_LOCAL_MAX_NEW_TOKENS}
       SEMANTIC_LLM_LOCAL_TRUST_REMOTE_CODE: ${SEMANTIC_LLM_LOCAL_TRUST_REMOTE_CODE}
     working_dir: /workspace/mission_planner
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8081"]
+    command: ["bash", "deploy/docker/start_planner_backend.sh"]
     volumes:
       - ${MISSION_PLANNER_PATH}:/workspace/mission_planner
       - ${LOCAL_MODEL_ROOT}:/workspace/models:ro

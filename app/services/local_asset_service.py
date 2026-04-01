@@ -12,98 +12,149 @@ def _settings():
     return get_settings()
 
 
-def _asset_root() -> Path:
-    return _settings().asset_root_dir
+def _asset_base_dir() -> Path:
+    asset_root = _settings().asset_root_dir
+    return asset_root.parent
+
+
+def default_scene_name() -> str:
+    return _settings().asset_root_dir.name
+
+
+@lru_cache(maxsize=1)
+def list_available_scenes() -> List[str]:
+    base_dir = _asset_base_dir()
+    if not base_dir.exists():
+        return []
+    return sorted(
+        child.name
+        for child in base_dir.iterdir()
+        if child.is_dir() and not child.name.startswith(".")
+    )
+
+
+def resolve_scene_name(scene_name: Optional[str] = None) -> str:
+    available = list_available_scenes()
+    if not available:
+        raise FileNotFoundError(f"no scene directories found under {_asset_base_dir()}")
+
+    if scene_name:
+        normalized = scene_name.strip()
+        if normalized in available:
+            return normalized
+        raise ValueError(f"unknown scene: {scene_name}")
+
+    default_name = default_scene_name()
+    if default_name in available:
+        return default_name
+    return available[0]
+
+
+def _asset_root(scene_name: Optional[str] = None) -> Path:
+    return _asset_base_dir() / resolve_scene_name(scene_name)
 
 
 def _read_json(path: Path) -> Dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _mission_path(name: str) -> Path:
-    return _asset_root() / "mission" / name
+def _mission_path(name: str, scene_name: Optional[str] = None) -> Path:
+    return _asset_root(scene_name) / "mission" / name
 
 
-def _world_path(name: str) -> Path:
-    return _asset_root() / "world" / name
+def _world_path(name: str, scene_name: Optional[str] = None) -> Path:
+    return _asset_root(scene_name) / "world" / name
 
 
-def _fleet_path(name: str) -> Path:
-    return _asset_root() / "fleet" / name
+def _fleet_path(name: str, scene_name: Optional[str] = None) -> Path:
+    return _asset_root(scene_name) / "fleet" / name
 
 
-def _planning_asset_path(name: str) -> Path:
-    return _asset_root() / "planning" / "assets" / name
+def _planning_asset_path(name: str, scene_name: Optional[str] = None) -> Path:
+    return _asset_root(scene_name) / "planning" / "assets" / name
 
 
-@lru_cache(maxsize=1)
-def load_world_manifest() -> Dict:
-    return _read_json(_world_path("manifest.json"))
+@lru_cache(maxsize=32)
+def load_world_manifest(scene_name: Optional[str] = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    return _read_json(_world_path("manifest.json", scene))
 
 
-@lru_cache(maxsize=1)
-def load_world_map_data() -> Dict:
-    return _read_json(_world_path("map_data.json"))
+@lru_cache(maxsize=32)
+def load_world_map_data(scene_name: Optional[str] = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    return _read_json(_world_path("map_data.json", scene))
 
 
-@lru_cache(maxsize=1)
-def load_nav_points_geojson() -> Dict:
-    return _read_json(_mission_path("nav_points_enriched.geojson"))
+@lru_cache(maxsize=32)
+def load_nav_points_geojson(scene_name: Optional[str] = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    return _read_json(_mission_path("nav_points_enriched.geojson", scene))
 
 
-@lru_cache(maxsize=1)
-def load_route_graph() -> Dict:
-    return _read_json(_mission_path("route_graph.json"))
+@lru_cache(maxsize=32)
+def load_route_graph(scene_name: Optional[str] = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    return _read_json(_mission_path("route_graph.json", scene))
 
 
-@lru_cache(maxsize=1)
-def load_nav_point_bindings() -> Dict:
-    return _read_json(_mission_path("nav_point_bindings.json"))
+@lru_cache(maxsize=32)
+def load_nav_point_bindings(scene_name: Optional[str] = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    return _read_json(_mission_path("nav_point_bindings.json", scene))
 
 
-@lru_cache(maxsize=1)
-def load_semantic_catalog() -> Dict:
-    return _read_json(_mission_path("semantic_catalog.json"))
+@lru_cache(maxsize=32)
+def load_semantic_catalog(scene_name: Optional[str] = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    return _read_json(_mission_path("semantic_catalog.json", scene))
 
 
-@lru_cache(maxsize=1)
-def load_robot_registry() -> Dict:
-    return _read_json(_fleet_path("robot_registry.json"))
+@lru_cache(maxsize=32)
+def load_robot_registry(scene_name: Optional[str] = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    return _read_json(_fleet_path("robot_registry.json", scene))
 
 
-@lru_cache(maxsize=1)
-def load_planner_problem() -> Dict:
-    return _read_json(_planning_asset_path("planner_problem.json"))
+@lru_cache(maxsize=32)
+def load_planner_problem(scene_name: Optional[str] = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    return _read_json(_planning_asset_path("planner_problem.json", scene))
 
 
-@lru_cache(maxsize=1)
-def load_planning_manifest() -> Dict:
-    return _read_json(_planning_asset_path("planning_input_manifest.json"))
+@lru_cache(maxsize=32)
+def load_planning_manifest(scene_name: Optional[str] = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    return _read_json(_planning_asset_path("planning_input_manifest.json", scene))
 
 
-@lru_cache(maxsize=1)
-def load_target_sets() -> Dict:
-    return _read_json(_planning_asset_path("semantic_target_sets.json"))
+@lru_cache(maxsize=32)
+def load_target_sets(scene_name: Optional[str] = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    return _read_json(_planning_asset_path("semantic_target_sets.json", scene))
 
 
-@lru_cache(maxsize=1)
-def load_mission_templates() -> Dict:
-    return _read_json(_planning_asset_path("mission_request_templates.json"))
+@lru_cache(maxsize=32)
+def load_mission_templates(scene_name: Optional[str] = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    return _read_json(_planning_asset_path("mission_request_templates.json", scene))
 
 
-@lru_cache(maxsize=1)
-def load_robot_to_nav_costs() -> Dict:
-    return _read_json(_planning_asset_path("robot_to_nav_costs.json"))
+@lru_cache(maxsize=32)
+def load_robot_to_nav_costs(scene_name: Optional[str] = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    return _read_json(_planning_asset_path("robot_to_nav_costs.json", scene))
 
 
-@lru_cache(maxsize=1)
-def load_nav_to_nav_costs() -> Dict:
-    return _read_json(_planning_asset_path("nav_to_nav_shortest_paths.json"))
+@lru_cache(maxsize=32)
+def load_nav_to_nav_costs(scene_name: Optional[str] = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    return _read_json(_planning_asset_path("nav_to_nav_shortest_paths.json", scene))
 
 
-@lru_cache(maxsize=1)
-def world_boundary() -> Dict[str, float]:
-    boundary = load_world_map_data().get("boundary", {})
+@lru_cache(maxsize=32)
+def world_boundary(scene_name: Optional[str] = None) -> Dict[str, float]:
+    boundary = load_world_map_data(scene_name).get("boundary", {})
     return {
         "min_x": float(boundary.get("min_x", 0.0)),
         "max_x": float(boundary.get("max_x", 0.0)),
@@ -135,10 +186,10 @@ def _classify_area_style(tags: Dict) -> Tuple[Optional[str], Optional[str]]:
     return None, None
 
 
-@lru_cache(maxsize=1)
-def nav_point_index() -> Dict[str, Dict]:
+@lru_cache(maxsize=32)
+def nav_point_index(scene_name: Optional[str] = None) -> Dict[str, Dict]:
     index = {}
-    for feature in load_nav_points_geojson()["features"]:
+    for feature in load_nav_points_geojson(scene_name)["features"]:
         props = feature["properties"]
         index[props["id"]] = {
             "id": props["id"],
@@ -160,10 +211,10 @@ def nav_point_index() -> Dict[str, Dict]:
     return index
 
 
-@lru_cache(maxsize=1)
-def route_node_index() -> Dict[str, Dict]:
+@lru_cache(maxsize=32)
+def route_node_index(scene_name: Optional[str] = None) -> Dict[str, Dict]:
     index = {}
-    for node in load_route_graph()["nodes"]:
+    for node in load_route_graph(scene_name)["nodes"]:
         index[node["node_id"]] = {
             "node_id": node["node_id"],
             "x": float(node["local_x"]),
@@ -172,11 +223,11 @@ def route_node_index() -> Dict[str, Dict]:
     return index
 
 
-@lru_cache(maxsize=1)
-def map_area_layers() -> List[Dict]:
+@lru_cache(maxsize=32)
+def map_area_layers(scene_name: Optional[str] = None) -> List[Dict]:
     areas = []
-    boundary = world_boundary()
-    for area in load_world_map_data().get("areas", []):
+    boundary = world_boundary(scene_name)
+    for area in load_world_map_data(scene_name).get("areas", []):
         layer_type, style_key = _classify_area_style(area.get("tags", {}))
         polygon = area.get("polygon_xz", {})
         outer = polygon.get("outer", [])
@@ -253,11 +304,11 @@ def _clip_segment_to_boundary(start: Dict[str, float], end: Dict[str, float], bo
     return [clipped_start, clipped_end]
 
 
-@lru_cache(maxsize=1)
-def route_edge_segments() -> List[Dict]:
-    boundary = world_boundary()
+@lru_cache(maxsize=32)
+def route_edge_segments(scene_name: Optional[str] = None) -> List[Dict]:
+    boundary = world_boundary(scene_name)
     segments = []
-    for edge in load_route_graph()["edges"]:
+    for edge in load_route_graph(scene_name)["edges"]:
         source = {
             "x": float(edge["from_local_xz"]["x"]),
             "z": float(edge["from_local_xz"]["z"]),
@@ -283,11 +334,12 @@ def route_edge_segments() -> List[Dict]:
     return segments
 
 
-def get_console_assets() -> Dict:
-    manifest = load_planning_manifest()
-    nav_points = sorted(nav_point_index().values(), key=lambda item: item["id"])
+def get_console_assets(scene_name: Optional[str] = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    manifest = load_planning_manifest(scene)
+    nav_points = sorted(nav_point_index(scene).values(), key=lambda item: item["id"])
     robots = []
-    for robot in load_planner_problem()["robots"]:
+    for robot in load_planner_problem(scene)["robots"]:
         robots.append(
             {
                 "planning_slot_id": robot["planning_slot_id"],
@@ -300,18 +352,20 @@ def get_console_assets() -> Dict:
             }
         )
     return {
+        "scene_name": scene,
         "package_id": manifest["package_id"],
         "counts": manifest["counts"],
-        "projection_origin": load_world_manifest().get("projection_origin", {}),
-        "world_boundary": world_boundary(),
-        "map_areas": map_area_layers(),
+        "projection_origin": load_world_manifest(scene).get("projection_origin", {}),
+        "world_boundary": world_boundary(scene),
+        "map_areas": map_area_layers(scene),
         "nav_points": nav_points,
-        "route_segments": route_edge_segments(),
+        "route_segments": route_edge_segments(scene),
         "robots": robots,
     }
 
 
 def clear_asset_caches() -> None:
+    list_available_scenes.cache_clear()
     load_world_manifest.cache_clear()
     load_world_map_data.cache_clear()
     load_nav_points_geojson.cache_clear()

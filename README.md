@@ -34,7 +34,8 @@ mission_planner/
 │   ├── jobs/               # 批处理任务输入
 │   ├── packages/           # 上传的任务包
 │   ├── results/            # 规划结果包
-│   ├── local_plans/        # 交互式规划结果
+│   ├── outputs/            # 交互式计划执行后保存的结果
+│   ├── local_plans/        # 旧版交互式结果目录，现仅兼容历史数据
 │   ├── models/             # 语义模型与适配器
 │   └── training/           # 训练数据
 ├── deploy/
@@ -73,11 +74,13 @@ mission_planner/
 - `POST /api/planner/interactive/plans/polygon`
 - `POST /api/planner/interactive/plans/semantic`
 - `GET /api/planner/interactive/plans/{plan_id}`
+- `POST /api/planner/interactive/plans/{plan_id}/execute`
 
 说明：
 
 - `GET /api/planner/interactive/console` 仅用于算法联调，不是正式前端页面
-- 交互式结果默认写入 `data/local_plans/<plan_id>/`
+- 三类交互式规划接口现在只生成预览，不会自动落盘
+- 只有调用执行接口后，结果才会写入 `data/outputs/<plan_id>/`
 - 默认资产根目录是 `data/assets/ncepu`
 
 ## 本地开发
@@ -180,12 +183,12 @@ docker logs -f planner-api-lite
 - 批处理任务：`data/jobs`
 - 任务包缓存：`data/packages`
 - 批处理结果：`data/results`
-- 交互式规划结果：`data/local_plans`
+- 交互式执行结果：`data/outputs`
 
-交互式规划结果通常包含：
+交互式计划在点击执行后会保存：
 
-- `data/local_plans/<plan_id>/request.json`
-- `data/local_plans/<plan_id>/plan_result.json`
+- `data/outputs/<plan_id>/request.json`
+- `data/outputs/<plan_id>/plan_result.json`
 
 ## 相关文档
 

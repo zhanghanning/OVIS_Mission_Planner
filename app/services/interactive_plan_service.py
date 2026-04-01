@@ -1,32 +1,36 @@
 from __future__ import annotations
 
+import copy
 import json
 import math
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Lock
 from typing import Dict, Iterable, List, Sequence
 
 from app.core.config import get_settings
 from app.planners.formal_multi_robot import plan_multi_robot_routes
 from app.services.local_asset_service import (
     get_console_assets,
+    list_available_scenes,
     load_mission_templates,
     load_nav_to_nav_costs,
-    load_planner_problem,
-    load_robot_to_nav_costs,
     nav_point_index,
+    resolve_scene_name,
     route_node_index,
 )
 from app.services.result_service import write_json
+from app.services.runtime_robot_service import (
+    build_runtime_planner_problem,
+    build_runtime_robot_assets,
+    build_runtime_robot_to_nav_costs,
+    get_runtime_robot_config,
+)
 from app.services.semantic_service import resolve_semantic_targets, validate_nav_point_ids
 
-
-ROBOT_COLORS = {
-    "slot_01": "#d94841",
-    "slot_02": "#2674f2",
-    "slot_03": "#1a936f",
-}
+_PLAN_CACHE_LOCK = Lock()
+_PENDING_PLAN_CACHE: Dict[str, Dict[str, Dict]] = {}
 
 
 def _settings():
@@ -35,6 +39,14 @@ def _settings():
 
 def _plan_root(plan_id: str) -> Path:
     return _settings().local_plan_dir / plan_id
+
+
+def _output_root_relative(plan_id: str) -> Path:
+    return Path("data") / "outputs" / plan_id
+
+
+def _output_root(plan_id: str) -> Path:
+    return _settings().base_dir / _output_root_relative(plan_id)
 
 
 def _dedupe_polyline(points: Sequence[Dict]) -> List[Dict]:
@@ -71,7 +83,7 @@ def _point_in_polygon(point_x: float, point_y: float, polygon: Sequence[Dict]) -
     return inside
 
 
-def _select_nav_points_in_polygon(vertices: Sequence[Dict], coordinate_mode: str) -> List[str]:
+def _select_nav_points_in_polygon(vertices: Sequence[Dict], coordinate_mode: str, scene_name: str) -> List[str]:
     if coordinate_mode not in {"local", "latlon"}:
         raise ValueError("coordinate_mode must be 'local' or 'latlon'")
     if len(vertices) < 3:
@@ -89,7 +101,7 @@ def _select_nav_points_in_polygon(vertices: Sequence[Dict], coordinate_mode: str
             polygon.append({"x": float(vertex["x"]), "y": float(vertex["z"])})
 
     selected_ids = []
-    for nav_point in nav_point_index().values():
+    for nav_point in nav_point_index(scene_name).values():
         point_x = nav_point["lon"] if coordinate_mode == "latlon" else nav_point["local_x"]
         point_y = nav_point["lat"] if coordinate_mode == "latlon" else nav_point["local_z"]
         if _point_in_polygon(point_x, point_y, polygon):
@@ -139,8 +151,8 @@ def _merge_route_polylines(robot_legs: Sequence[Dict]) -> List[Dict]:
     return merged
 
 
-def _selected_nav_point_payload(nav_ids: Iterable[str]) -> List[Dict]:
-    nav_index = nav_point_index()
+def _selected_nav_point_payload(nav_ids: Iterable[str], scene_name: str) -> List[Dict]:
+    nav_index = nav_point_index(scene_name)
     payload = []
     for nav_id in nav_ids:
         if nav_id not in nav_index:
@@ -167,12 +179,17 @@ def _visualization_bounds(console_assets: Dict) -> Dict:
     }
 
 
-def _build_plan_artifacts(raw_result: Dict, selection_payload: Dict, polygon_payload: List[Dict] | None = None) -> Dict:
-    planner_problem = load_planner_problem()
+def _build_plan_artifacts(
+    raw_result: Dict,
+    selection_payload: Dict,
+    scene_name: str,
+    polygon_payload: List[Dict] | None = None,
+) -> Dict:
+    planner_problem = build_runtime_planner_problem(scene_name, require_all_placed=True)
     robot_problem_index = {robot["planning_slot_id"]: robot for robot in planner_problem["robots"]}
-    nav_index = nav_point_index()
-    node_index = route_node_index()
-    console_assets = get_console_assets()
+    nav_index = nav_point_index(scene_name)
+    node_index = route_node_index(scene_name)
+    console_assets = get_console_assets(scene_name)
 
     for robot in raw_result["robots"]:
         robot_problem = robot_problem_index[robot["planning_slot_id"]]
@@ -183,15 +200,17 @@ def _build_plan_artifacts(raw_result: Dict, selection_payload: Dict, polygon_pay
             leg_payload["polyline_local_m"] = polyline
             leg_payloads.append(leg_payload)
         robot["legs"] = leg_payloads
-        robot["route_nav_points"] = _selected_nav_point_payload(robot["route_nav_point_ids"])
+        robot["route_nav_points"] = _selected_nav_point_payload(robot["route_nav_point_ids"], scene_name)
         robot["display_route_local_m"] = _merge_route_polylines(leg_payloads)
         robot["start_pose"] = robot_problem["start_pose"]
         robot["home_pose"] = robot_problem["home_pose"]
-        robot["color"] = ROBOT_COLORS.get(robot["planning_slot_id"], "#444444")
+        robot["color"] = robot_problem.get("color", "#444444")
+        robot["display_name"] = robot_problem.get("display_name", robot["planning_slot_id"])
 
     raw_result["selection"] = selection_payload
-    raw_result["selected_nav_points"] = _selected_nav_point_payload(raw_result["target_nav_point_ids"])
-    raw_result["unassigned_nav_points"] = _selected_nav_point_payload(raw_result["unassigned_nav_point_ids"])
+    raw_result["scene_name"] = scene_name
+    raw_result["selected_nav_points"] = _selected_nav_point_payload(raw_result["target_nav_point_ids"], scene_name)
+    raw_result["unassigned_nav_points"] = _selected_nav_point_payload(raw_result["unassigned_nav_point_ids"], scene_name)
     raw_result["visualization"] = {
         "bounds_local_m": _visualization_bounds(console_assets),
         "selected_polygon": polygon_payload or [],
@@ -210,9 +229,44 @@ def _build_plan_artifacts(raw_result: Dict, selection_payload: Dict, polygon_pay
 
 
 def _save_plan_files(plan_id: str, request_payload: Dict, result_payload: Dict) -> None:
-    plan_root = _plan_root(plan_id)
+    plan_root = _output_root(plan_id)
     write_json(plan_root / "request.json", request_payload)
     write_json(plan_root / "plan_result.json", result_payload)
+
+
+def _cache_plan_preview(plan_id: str, request_payload: Dict, result_payload: Dict) -> None:
+    with _PLAN_CACHE_LOCK:
+        _PENDING_PLAN_CACHE[plan_id] = {
+            "request": copy.deepcopy(request_payload),
+            "result": copy.deepcopy(result_payload),
+        }
+
+
+def _get_cached_plan_preview(plan_id: str) -> Dict[str, Dict] | None:
+    with _PLAN_CACHE_LOCK:
+        payload = _PENDING_PLAN_CACHE.get(plan_id)
+        if payload is None:
+            return None
+        return copy.deepcopy(payload)
+
+
+def _relative_output_paths(plan_id: str) -> Dict[str, str]:
+    root = _output_root_relative(plan_id)
+    return {
+        "output_dir": root.as_posix(),
+        "request_path": (root / "request.json").as_posix(),
+        "result_path": (root / "plan_result.json").as_posix(),
+    }
+
+
+def _apply_persistence_metadata(result_payload: Dict, plan_id: str, saved_at: str | None = None) -> Dict:
+    payload = copy.deepcopy(result_payload)
+    payload["persistence"] = {
+        **_relative_output_paths(plan_id),
+        "saved": saved_at is not None,
+        "saved_at": saved_at,
+    }
+    return payload
 
 
 def _base_request_envelope(mode: str, payload: Dict) -> Dict:
@@ -226,6 +280,7 @@ def _base_request_envelope(mode: str, payload: Dict) -> Dict:
 
 def _execute_plan(
     mode: str,
+    scene_name: str,
     selected_nav_ids: List[str],
     mission_label: str,
     natural_language: str,
@@ -239,9 +294,10 @@ def _execute_plan(
     plan_id = f"interactive_plan_{uuid.uuid4().hex[:10]}"
     created_at = datetime.now(timezone.utc).isoformat()
 
-    planner_problem = load_planner_problem()
-    robot_to_nav = load_robot_to_nav_costs()
-    nav_to_nav = load_nav_to_nav_costs()
+    planner_problem = build_runtime_planner_problem(scene_name, require_all_placed=True)
+    robot_to_nav = build_runtime_robot_to_nav_costs(scene_name, require_all_placed=True)
+    nav_to_nav = load_nav_to_nav_costs(scene_name)
+    runtime_robot_config = get_runtime_robot_config(scene_name)
 
     raw_result = plan_multi_robot_routes(
         planner_problem=planner_problem,
@@ -258,24 +314,34 @@ def _execute_plan(
     raw_result["plan_id"] = plan_id
     raw_result["created_at"] = created_at
 
-    result_payload = _build_plan_artifacts(raw_result, selection_payload, polygon_payload=polygon_payload)
-    _save_plan_files(
+    result_payload = _apply_persistence_metadata(
+        _build_plan_artifacts(raw_result, selection_payload, scene_name, polygon_payload=polygon_payload),
         plan_id,
-        _base_request_envelope(
-            mode,
-            {
-                "plan_id": plan_id,
-                "created_at": created_at,
-                "request": request_payload,
-            },
-        ),
-        result_payload,
     )
+    request_envelope = _base_request_envelope(
+        mode,
+        {
+            "plan_id": plan_id,
+            "created_at": created_at,
+            "request": {
+                **request_payload,
+                "scene": scene_name,
+                "runtime_robot_config": runtime_robot_config,
+            },
+        },
+    )
+    _cache_plan_preview(plan_id, request_envelope, result_payload)
     return result_payload
 
 
-def create_manual_plan(nav_point_ids: List[str], mission_label: str = "", notes: str = "") -> Dict:
-    selected_nav_ids = sorted(set(validate_nav_point_ids(nav_point_ids)))
+def create_manual_plan(
+    nav_point_ids: List[str],
+    mission_label: str = "",
+    notes: str = "",
+    scene_name: str | None = None,
+) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    selected_nav_ids = sorted(set(validate_nav_point_ids(nav_point_ids, scene)))
     selection_payload = {
         "resolution_mode": "manual_selection",
         "resolved_target_set_ids": [],
@@ -287,6 +353,7 @@ def create_manual_plan(nav_point_ids: List[str], mission_label: str = "", notes:
     }
     return _execute_plan(
         mode="manual",
+        scene_name=scene,
         selected_nav_ids=selected_nav_ids,
         mission_label=mission_label or "manual_selected_targets",
         natural_language=mission_label or "手动选择任务点",
@@ -295,12 +362,19 @@ def create_manual_plan(nav_point_ids: List[str], mission_label: str = "", notes:
             "nav_point_ids": selected_nav_ids,
             "mission_label": mission_label,
             "notes": notes,
+            "scene": scene,
         },
     )
 
 
-def create_polygon_plan(vertices: List[Dict], coordinate_mode: str = "local", mission_label: str = "") -> Dict:
-    selected_nav_ids = _select_nav_points_in_polygon(vertices, coordinate_mode=coordinate_mode)
+def create_polygon_plan(
+    vertices: List[Dict],
+    coordinate_mode: str = "local",
+    mission_label: str = "",
+    scene_name: str | None = None,
+) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    selected_nav_ids = _select_nav_points_in_polygon(vertices, coordinate_mode=coordinate_mode, scene_name=scene)
     if not selected_nav_ids:
         raise ValueError("polygon contains no selectable nav points")
     selection_payload = {
@@ -314,6 +388,7 @@ def create_polygon_plan(vertices: List[Dict], coordinate_mode: str = "local", mi
     }
     return _execute_plan(
         mode="polygon",
+        scene_name=scene,
         selected_nav_ids=selected_nav_ids,
         mission_label=mission_label or "polygon_selected_targets",
         natural_language=mission_label or "圈选区域内任务点",
@@ -322,20 +397,23 @@ def create_polygon_plan(vertices: List[Dict], coordinate_mode: str = "local", mi
             "vertices": vertices,
             "coordinate_mode": coordinate_mode,
             "mission_label": mission_label,
+            "scene": scene,
         },
         polygon_payload=vertices,
     )
 
 
-def create_semantic_plan(query: str, use_llm: bool = True) -> Dict:
-    resolution = resolve_semantic_targets(query, use_llm=use_llm)
-    selected_nav_ids = sorted(set(validate_nav_point_ids(resolution["resolved_nav_point_ids"])))
+def create_semantic_plan(query: str, use_llm: bool = True, scene_name: str | None = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    resolution = resolve_semantic_targets(query, use_llm=use_llm, scene_name=scene)
+    selected_nav_ids = sorted(set(validate_nav_point_ids(resolution["resolved_nav_point_ids"], scene)))
     resolution["resolved_nav_point_ids"] = selected_nav_ids
     resolution["matched_nav_point_ids"] = selected_nav_ids
     if not selected_nav_ids:
         raise ValueError(f"semantic query did not resolve any nav points: {query}")
     return _execute_plan(
         mode="semantic",
+        scene_name=scene,
         selected_nav_ids=selected_nav_ids,
         mission_label="semantic_selected_targets",
         natural_language=query,
@@ -343,25 +421,71 @@ def create_semantic_plan(query: str, use_llm: bool = True) -> Dict:
         request_payload={
             "query": query,
             "use_llm": use_llm,
+            "scene": scene,
         },
     )
 
 
 def get_plan(plan_id: str) -> Dict:
-    result_path = _plan_root(plan_id) / "plan_result.json"
-    if not result_path.exists():
+    cached = _get_cached_plan_preview(plan_id)
+    if cached is not None:
+        return cached["result"]
+
+    for root in (_output_root(plan_id), _plan_root(plan_id)):
+        result_path = root / "plan_result.json"
+        if result_path.exists():
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+            if "persistence" not in payload:
+                payload = _apply_persistence_metadata(payload, plan_id, saved_at=None)
+            return payload
+    raise FileNotFoundError(plan_id)
+
+
+def execute_plan(plan_id: str) -> Dict:
+    cached = _get_cached_plan_preview(plan_id)
+    if cached is None:
+        saved_result_path = _output_root(plan_id) / "plan_result.json"
+        if saved_result_path.exists():
+            return json.loads(saved_result_path.read_text(encoding="utf-8"))
         raise FileNotFoundError(plan_id)
-    return json.loads(result_path.read_text(encoding="utf-8"))
+
+    request_payload = cached["request"]
+    result_payload = cached["result"]
+    if result_payload.get("persistence", {}).get("saved"):
+        return result_payload
+
+    saved_at = datetime.now(timezone.utc).isoformat()
+    result_payload = _apply_persistence_metadata(result_payload, plan_id, saved_at=saved_at)
+    request_payload = copy.deepcopy(request_payload)
+    request_payload["executed_at"] = saved_at
+
+    _save_plan_files(plan_id, request_payload, result_payload)
+    _cache_plan_preview(plan_id, request_payload, result_payload)
+    return result_payload
 
 
-def get_console_payload() -> Dict:
-    payload = get_console_assets()
-    mission_templates = load_mission_templates()
+def get_console_payload(scene_name: str | None = None) -> Dict:
+    scene = resolve_scene_name(scene_name)
+    payload = get_console_assets(scene)
+    mission_templates = load_mission_templates(scene)
+    runtime_robot_config = get_runtime_robot_config(scene)
+    payload["robots"] = build_runtime_robot_assets(scene)
+    if isinstance(payload.get("counts"), dict):
+        payload["counts"] = {
+            **payload["counts"],
+            "robots": runtime_robot_config["robot_count"],
+        }
+    payload["robot_config"] = runtime_robot_config
+    payload["current_scene"] = scene
+    payload["available_scenes"] = list_available_scenes()
     payload["available_templates"] = mission_templates["templates"]
     payload["semantic_examples"] = [item["natural_language"] for item in mission_templates["templates"]]
     payload["plan_api"] = {
+        "assets": "/api/planner/interactive/assets",
+        "robot_config": "/api/planner/interactive/robots/config",
         "manual": "/api/planner/interactive/plans/manual",
         "polygon": "/api/planner/interactive/plans/polygon",
         "semantic": "/api/planner/interactive/plans/semantic",
+        "execute_template": "/api/planner/interactive/plans/{plan_id}/execute",
     }
     return payload

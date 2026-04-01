@@ -23,7 +23,7 @@ SYSTEM_PROMPT = (
 )
 
 
-def build_semantic_catalog_prompt(target_sets: Dict, semantic_catalog: Dict) -> str:
+def build_semantic_catalog_prompt(target_sets: Dict, semantic_catalog: Dict, scene_name: str | None = None) -> str:
     candidate_target_sets = [
         {
             "target_set_id": item["target_set_id"],
@@ -41,7 +41,7 @@ def build_semantic_catalog_prompt(target_sets: Dict, semantic_catalog: Dict) -> 
             "building_name": item.get("building_name", ""),
             "building_category": item.get("building_category", ""),
         }
-        for item in nav_point_index().values()
+        for item in nav_point_index(scene_name).values()
     ]
     return json.dumps(
         {
@@ -53,12 +53,12 @@ def build_semantic_catalog_prompt(target_sets: Dict, semantic_catalog: Dict) -> 
     )
 
 
-def build_semantic_user_prompt(query: str, target_sets: Dict, semantic_catalog: Dict) -> str:
+def build_semantic_user_prompt(query: str, target_sets: Dict, semantic_catalog: Dict, scene_name: str | None = None) -> str:
     return (
         "Mission query:\n"
         f"{query}\n\n"
         "Available catalog:\n"
-        f"{build_semantic_catalog_prompt(target_sets, semantic_catalog)}"
+        f"{build_semantic_catalog_prompt(target_sets, semantic_catalog, scene_name)}"
     )
 
 
@@ -318,7 +318,12 @@ def _invoke_openai_compatible(system_prompt: str, user_prompt: str) -> Dict:
     return _json_from_text(content)
 
 
-def resolve_semantic_selection_with_llm(query: str, target_sets: Dict, semantic_catalog: Dict) -> Optional[Dict]:
+def resolve_semantic_selection_with_llm(
+    query: str,
+    target_sets: Dict,
+    semantic_catalog: Dict,
+    scene_name: str | None = None,
+) -> Optional[Dict]:
     settings = get_settings()
     if not settings.semantic_llm_enabled:
         return None
@@ -327,7 +332,7 @@ def resolve_semantic_selection_with_llm(query: str, target_sets: Dict, semantic_
     if provider == "disabled":
         return None
 
-    user_prompt = build_semantic_user_prompt(query, target_sets, semantic_catalog)
+    user_prompt = build_semantic_user_prompt(query, target_sets, semantic_catalog, scene_name)
     if provider == "openai_compatible":
         return _invoke_openai_compatible(SYSTEM_PROMPT, user_prompt)
     if provider == "local_transformers":

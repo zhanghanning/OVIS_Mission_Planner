@@ -36,4 +36,4 @@ WORKDIR /workspace/mission_planner
 EXPOSE 8081
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8081"]
+CMD ["bash", "deploy/docker/start_planner_backend.sh"]
