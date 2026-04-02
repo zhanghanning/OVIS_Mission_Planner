@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are a mission-selection assistant. Select relevant target_set_ids and nav point ids "
-    "for a campus inspection task. Return JSON only with keys "
+    "for an inspection task in the current scene. Return JSON only with keys "
     "selected_target_set_ids, selected_nav_point_ids, reason."
 )
 
@@ -40,6 +40,8 @@ def build_semantic_catalog_prompt(target_sets: Dict, semantic_catalog: Dict, sce
             "semantic_type": item.get("semantic_type", ""),
             "building_name": item.get("building_name", ""),
             "building_category": item.get("building_category", ""),
+            "power_asset_name": item.get("power_asset_name", ""),
+            "power_asset_category": item.get("power_asset_category", ""),
         }
         for item in nav_point_index(scene_name).values()
     ]

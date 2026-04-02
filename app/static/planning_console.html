@@ -716,6 +716,40 @@
       '#65a30d',
     ];
 
+    const DEFAULT_VIEW_LIMITS = Object.freeze({
+      minZoom: 1,
+      maxZoom: 8,
+    });
+
+    const SCENE_VIEW_LIMITS = Object.freeze({
+      wind_power_station: Object.freeze({
+        maxZoom: DEFAULT_VIEW_LIMITS.maxZoom * 10,
+      }),
+      windpowerstation: Object.freeze({
+        maxZoom: DEFAULT_VIEW_LIMITS.maxZoom * 10,
+      }),
+    });
+
+    function viewLimitsForScene(sceneName) {
+      const normalized = String(sceneName || '').trim().toLowerCase();
+      return {
+        minZoom: DEFAULT_VIEW_LIMITS.minZoom,
+        maxZoom: DEFAULT_VIEW_LIMITS.maxZoom,
+        ...(SCENE_VIEW_LIMITS[normalized] || {}),
+      };
+    }
+
+    function buildViewState(sceneName, centerX = 0, centerZ = 0) {
+      const limits = viewLimitsForScene(sceneName);
+      return {
+        zoom: limits.minZoom,
+        minZoom: limits.minZoom,
+        maxZoom: limits.maxZoom,
+        centerX,
+        centerZ,
+      };
+    }
+
     const state = {
       assets: null,
       bounds: null,
@@ -730,13 +764,7 @@
       robotConfig: null,
       robotConfigDraft: null,
       robotPlacementTargetIndex: null,
-      view: {
-        zoom: 1,
-        minZoom: 1,
-        maxZoom: 8,
-        centerX: 0,
-        centerZ: 0,
-      },
+      view: buildViewState(null),
       drag: {
         active: false,
         startClientX: 0,
@@ -1067,13 +1095,11 @@
         };
       }
 
-      state.view = {
-        zoom: 1,
-        minZoom: 1,
-        maxZoom: 8,
-        centerX: (state.bounds.minX + state.bounds.maxX) / 2,
-        centerZ: (state.bounds.minZ + state.bounds.maxZ) / 2,
-      };
+      state.view = buildViewState(
+        state.currentScene,
+        (state.bounds.minX + state.bounds.maxX) / 2,
+        (state.bounds.minZ + state.bounds.maxZ) / 2,
+      );
     }
 
     function currentScale() {
@@ -1155,6 +1181,8 @@
       switch (area.style_key) {
         case 'building':
           return { fill: 'rgba(216, 199, 178, 0.95)', stroke: 'rgba(149, 121, 92, 0.9)', lineWidth: 1.1 };
+        case 'power:substation':
+          return { fill: 'rgba(244, 208, 120, 0.36)', stroke: 'rgba(184, 128, 32, 0.86)', lineWidth: 1.0 };
         case 'landuse:forest':
         case 'landuse:orchard':
           return { fill: 'rgba(113, 154, 102, 0.34)', stroke: 'rgba(84, 123, 72, 0.62)', lineWidth: 0.8 };
@@ -1419,6 +1447,7 @@
       const staticItems = [
         { color: '#8b6f47', label: '场景边界' },
         { color: '#d8c7b2', label: '建筑' },
+        { color: '#d9a441', label: '变电站' },
         { color: '#87ab6d', label: '用地/绿地' },
         { color: '#c7c1b0', label: '路网' },
         { color: '#2b2b2b', label: '任务点' },

@@ -167,6 +167,10 @@ def _classify_area_style(tags: Dict) -> Tuple[Optional[str], Optional[str]]:
     if "building" in tags:
         return "building", "building"
 
+    power = tags.get("power")
+    if power == "substation":
+        return "power", "power:substation"
+
     landuse = tags.get("landuse")
     if landuse in {"forest", "orchard", "meadow", "grass", "residential"}:
         return "landuse", f"landuse:{landuse}"
@@ -203,6 +207,9 @@ def nav_point_index(scene_name: Optional[str] = None) -> Dict[str, Dict]:
             "building_ref": props.get("building_ref", ""),
             "building_name": props.get("building_name", ""),
             "building_category": props.get("building_category", ""),
+            "power_asset_ref": props.get("power_asset_ref", ""),
+            "power_asset_name": props.get("power_asset_name", ""),
+            "power_asset_category": props.get("power_asset_category", ""),
             "robot_types": list(props.get("robot_types", [])),
             "yaw": float(props.get("yaw", 0.0)),
             "action": props.get("action", ""),
@@ -227,29 +234,35 @@ def route_node_index(scene_name: Optional[str] = None) -> Dict[str, Dict]:
 def map_area_layers(scene_name: Optional[str] = None) -> List[Dict]:
     areas = []
     boundary = world_boundary(scene_name)
-    for area in load_world_map_data(scene_name).get("areas", []):
-        layer_type, style_key = _classify_area_style(area.get("tags", {}))
-        polygon = area.get("polygon_xz", {})
-        outer = polygon.get("outer", [])
-        if layer_type is None or len(outer) < 3:
-            continue
+    map_data = load_world_map_data(scene_name)
 
-        bbox = area.get("bbox", {})
-        if (
+    def bbox_intersects_boundary(bbox: Dict) -> bool:
+        return not (
             float(bbox.get("max_x", -1e12)) < boundary["min_x"]
             or float(bbox.get("min_x", 1e12)) > boundary["max_x"]
             or float(bbox.get("max_z", -1e12)) < boundary["min_z"]
             or float(bbox.get("min_z", 1e12)) > boundary["max_z"]
-        ):
-            continue
+        )
+
+    def append_area_layer(
+        *,
+        area_id: str,
+        tags: Dict,
+        outer: List[Dict],
+        holes: List[List[Dict]],
+        bbox: Dict,
+    ) -> None:
+        layer_type, style_key = _classify_area_style(tags)
+        if layer_type is None or len(outer) < 3 or not bbox_intersects_boundary(bbox):
+            return
 
         areas.append(
             {
-                "area_id": area["element_id"],
+                "area_id": area_id,
                 "layer_type": layer_type,
                 "style_key": style_key,
-                "name": area.get("tags", {}).get("name", ""),
-                "tags": area.get("tags", {}),
+                "name": tags.get("name", ""),
+                "tags": tags,
                 "outer": [
                     {"x": float(point["x"]), "z": float(point["z"])}
                     for point in outer
@@ -259,9 +272,31 @@ def map_area_layers(scene_name: Optional[str] = None) -> List[Dict]:
                         {"x": float(point["x"]), "z": float(point["z"])}
                         for point in hole
                     ]
-                    for hole in polygon.get("holes", [])
+                    for hole in holes
                 ],
             }
+        )
+
+    for area in map_data.get("areas", []):
+        polygon = area.get("polygon_xz", {})
+        append_area_layer(
+            area_id=area["element_id"],
+            tags=area.get("tags", {}),
+            outer=polygon.get("outer", []),
+            holes=polygon.get("holes", []),
+            bbox=area.get("bbox", {}),
+        )
+
+    for way in map_data.get("ways", []):
+        polyline = way.get("polyline_xz", [])
+        if len(polyline) < 4 or polyline[0] != polyline[-1]:
+            continue
+        append_area_layer(
+            area_id=way["element_id"],
+            tags=way.get("tags", {}),
+            outer=polyline[:-1],
+            holes=[],
+            bbox=way.get("bbox", {}),
         )
     return sorted(areas, key=lambda item: (item["layer_type"] != "landuse", item["area_id"]))
 

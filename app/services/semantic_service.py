@@ -23,6 +23,10 @@ CATEGORY_KEYWORDS = {
     "sports_facility": ["体育", "球场", "运动场", "运动设施"],
     "service_building": ["服务中心", "服务楼", "快递站", "后勤"],
     "general_building": ["综合楼", "综合建筑", "公共建筑"],
+    "power_infrastructure": ["电力设施", "电力资产", "能源设施", "场站设备"],
+    "substation": ["变电站", "升压站", "开关站"],
+    "wind_turbine": ["风机", "风力发电机", "风电机组"],
+    "solar_generator": ["光伏", "光伏板", "光伏阵列", "太阳能板"],
 }
 
 CHINESE_DIGITS = {
@@ -320,6 +324,32 @@ def _building_matches_by_name(query: str, semantic_catalog: Dict) -> Optional[Di
     }
 
 
+def _power_asset_matches_by_name(query: str, semantic_catalog: Dict) -> Optional[Dict]:
+    normalized_query = _normalize_text(query)
+    matched_assets: List[Dict] = []
+    for asset in semantic_catalog.get("power_assets", []):
+        names = [_normalize_text(asset.get("name", ""))]
+        names.extend(_normalize_text(alias) for alias in asset.get("aliases", []))
+        if any(name and name in normalized_query for name in names):
+            matched_assets.append(asset)
+
+    if not matched_assets:
+        return None
+
+    nav_ids = sorted({nav_id for asset in matched_assets for nav_id in asset.get("nav_point_ids", [])})
+    return {
+        "resolution_mode": "power_asset_name",
+        "resolved_target_set_ids": [],
+        "resolved_nav_point_ids": nav_ids,
+        "matched_building_ids": [],
+        "matched_building_names": [],
+        "matched_asset_ids": [asset["asset_id"] for asset in matched_assets],
+        "matched_asset_names": [asset["name"] for asset in matched_assets],
+        "matched_nav_point_ids": nav_ids,
+        "notes": "Matched power asset aliases from semantic query.",
+    }
+
+
 def _standalone_nav_match(query: str, semantic_catalog: Dict) -> Optional[Dict]:
     normalized_query = _normalize_text(query)
     matched_nav_ids: List[str] = []
@@ -401,6 +431,7 @@ def resolve_semantic_targets(query: str, use_llm: bool = True, scene_name: str |
         lambda: _building_matches_by_number_reference(query, semantic_catalog),
         lambda: _building_matches_by_range(query, semantic_catalog),
         lambda: _building_matches_by_name(query, semantic_catalog),
+        lambda: _power_asset_matches_by_name(query, semantic_catalog),
         lambda: _local_category_match(query, target_sets),
         lambda: _standalone_nav_match(query, semantic_catalog),
     ):
