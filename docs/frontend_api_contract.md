@@ -14,6 +14,7 @@
 - 规划流程已经改为“先预览，后执行保存”
 - 手动规划、圈选规划、语义规划都不会在创建时自动落盘
 - 新增 `POST /api/planner/interactive/plans/{plan_id}/execute`，只有点击执行后才会保存
+- 新增 `GET /api/planner/interactive/plans/{plan_id}/viewer`，可按计划 ID 跳转到内置联调 viewer
 - 三类规划结果统一保存到 `data/outputs/<plan_id>/`
 - 资产读取和规划创建都已支持 `scene` 场景参数
 - 资产接口会返回 `current_scene`、`available_scenes`、`scene_name`
@@ -22,6 +23,7 @@
 - 新增运行时机器人初始化配置接口，支持用户输入机器狗数量并在地图已有节点上放置机器狗
 - 机器人初始化配置会以 JSON 保存到本地，并在系统启动后自动读取
 - 规划阶段实际使用当前保存的机器人初始化配置；若仍有未放置机器人，规划接口会直接拒绝
+- 资产与语义规划已支持风电场/电力场站数据，包括变电站区域、风机节点和光伏类目标
 
 ## 2. 基本信息
 
@@ -48,6 +50,7 @@
 - `POST /api/planner/interactive/plans/semantic`
 - `GET /api/planner/interactive/plans/{plan_id}`
 - `POST /api/planner/interactive/plans/{plan_id}/execute`
+- `GET /api/planner/interactive/plans/{plan_id}/viewer`
 
 ## 4. 健康检查
 
@@ -75,7 +78,7 @@ GET /health
 
 ```http
 GET /api/planner/interactive/assets
-GET /api/planner/interactive/assets?scene=ncepu
+GET /api/planner/interactive/assets?scene=<scene_name>
 ```
 
 用途：
@@ -88,13 +91,19 @@ GET /api/planner/interactive/assets?scene=ncepu
 
 前端应在应用启动后优先请求这一项。
 
+说明：
+
+- `scene` 取值来自 `data/assets/<scene_name>/` 的目录名，当前仓库内已包含 `NCEPU` 和 `wind_power_station`
+- 场景名区分大小写，前端不应自行假设或转换
+- `wind_power_station` 场景下会返回电力资产相关字段与语义目标集
+
 核心响应字段示例：
 
 ```json
 {
-  "scene_name": "ncepu",
-  "current_scene": "ncepu",
-  "available_scenes": ["ncepu"],
+  "scene_name": "wind_power_station",
+  "current_scene": "wind_power_station",
+  "available_scenes": ["NCEPU", "wind_power_station"],
   "package_id": "mission_planner_assets",
   "counts": {},
   "projection_origin": {},
@@ -134,12 +143,13 @@ GET /api/planner/interactive/assets?scene=ncepu
     }
   ],
   "robot_config": {
-    "scene_name": "ncepu",
+    "schema_version": "1.0.0",
+    "scene_name": "wind_power_station",
     "robot_count": 3,
     "all_robots_placed": true,
     "placed_robot_ids": ["slot_01", "slot_02", "slot_03"],
     "unplaced_robot_ids": [],
-    "config_path": "data/configs/robot_initialization/ncepu.json",
+    "config_path": "data/configs/robot_initialization/wind_power_station.json",
     "source": "file",
     "updated_at": "2026-04-02T09:00:00+00:00",
     "robots": []
@@ -157,6 +167,18 @@ GET /api/planner/interactive/assets?scene=ncepu
 }
 ```
 
+字段补充说明：
+
+- `map_areas[]` 至少包含 `area_id`、`layer_type`、`style_key`、`name`、`tags`、`outer`、`holes`
+- `map_areas[].style_key=power:substation` 表示变电站区域图层，前端应按电力设施图层渲染
+- `nav_points[]` 至少包含 `id`、`name`、`lat`、`lon`、`local_x`、`local_z`、`category`、`semantic_type`
+- `nav_points[]` 还会附带建筑关联字段 `building_ref`、`building_name`、`building_category`
+- `nav_points[]` 还会附带电力资产关联字段 `power_asset_ref`、`power_asset_name`、`power_asset_category`
+- `nav_points[]` 还会附带 `robot_types`、`yaw`、`action`、`note`，可直接用于交互展示或调试提示
+- `available_templates` 为当前场景完整任务模板列表，正式前端可直接消费
+- `semantic_examples` 为模板里的自然语言示例列表，适合填充语义输入提示或快捷短语
+- `plan_api` 为当前调试控制台使用的接口模板，正式前端可参考但不必依赖它生成全部 URL
+
 前端重点处理：
 
 - 默认不传 `scene` 时，后端会返回默认场景
@@ -165,6 +187,8 @@ GET /api/planner/interactive/assets?scene=ncepu
 - 地图、图例、任务点、机器人起终点都应随着场景切换整体刷新
 - `robots` 为当前已保存的运行时机器人初始化结果，数量和位置都不再固定
 - `robot_config` 用于驱动“机器狗初始化”面板，包括配置文件路径、是否还有未放置机器人等
+- 当 `nav_points[]` 存在 `power_asset_name/category` 时，前端应将其视为稳定可用的电力资产元数据
+- 当 `map_areas[]` 出现 `power:substation` 时，前端应支持变电站区域高亮或图例展示
 
 异常约定：
 
@@ -198,7 +222,7 @@ GET /api/planner/interactive/semantic/provider-status
 
 ```http
 GET /api/planner/interactive/robots/config
-GET /api/planner/interactive/robots/config?scene=ncepu
+GET /api/planner/interactive/robots/config?scene=<scene_name>
 ```
 
 用途：
@@ -208,19 +232,33 @@ GET /api/planner/interactive/robots/config?scene=ncepu
 
 核心响应字段：
 
+- `schema_version`
 - `scene_name`
 - `robot_count`
 - `all_robots_placed`
 - `placed_robot_ids`
 - `unplaced_robot_ids`
 - `config_path`
+- `source`
 - `updated_at`
 - `robots[].index`
 - `robots[].planning_slot_id`
 - `robots[].hardware_id`
 - `robots[].display_name`
 - `robots[].color`
+- `robots[].placed`
 - `robots[].anchor_nav_point_id`
+- `robots[].anchor_nav_point_name`
+- `robots[].start_nav_point_id`
+- `robots[].home_nav_point_id`
+- `robots[].start_pose`
+- `robots[].home_pose`
+
+说明：
+
+- `source` 可能为 `file` 或 `generated_default`
+- `robots[].placed=false` 表示该机器狗槽位尚未绑定到任何导航点
+- `start_pose/home_pose` 与 `assets.robots` 中的位姿结构保持一致，正式前端可直接复用
 
 ### 7.2 保存当前配置
 
@@ -232,7 +270,7 @@ PUT /api/planner/interactive/robots/config
 
 ```json
 {
-  "scene": "ncepu",
+  "scene": "wind_power_station",
   "robot_count": 4,
   "robots": [
     {"anchor_nav_point_id": "NP_001"},
@@ -288,7 +326,7 @@ POST /api/planner/interactive/plans/manual
   "nav_point_ids": ["NP_049", "NP_050"],
   "mission_label": "manual_pick",
   "notes": "frontend manual selection",
-  "scene": "ncepu"
+  "scene": "NCEPU"
 }
 ```
 
@@ -310,7 +348,7 @@ POST /api/planner/interactive/plans/polygon
 {
   "coordinate_mode": "local",
   "mission_label": "polygon_pick",
-  "scene": "ncepu",
+  "scene": "NCEPU",
   "vertices": [
     {"x": 10.0, "z": 20.0},
     {"x": 30.0, "z": 20.0},
@@ -337,9 +375,9 @@ POST /api/planner/interactive/plans/semantic
 
 ```json
 {
-  "query": "巡检二号餐厅",
+  "query": "巡检升压站和附近风机",
   "use_llm": true,
-  "scene": "ncepu"
+  "scene": "wind_power_station"
 }
 ```
 
@@ -348,6 +386,8 @@ POST /api/planner/interactive/plans/semantic
 - 该接口只生成规划预览
 - `scene` 为新增字段，前端当前场景切换后必须带上
 - `use_llm=false` 时可作为规则解析或降级策略的一部分
+- 规则解析除校园建筑外，还支持电力相关语义类别和资产别名匹配
+- 已支持的电力相关类别包括 `power_infrastructure`、`substation`、`wind_turbine`、`solar_generator`
 - 当语义没有解析到任何任务点时，后端返回 `400`
 
 ## 10. 规划结果读取与执行
@@ -369,7 +409,23 @@ GET /api/planner/interactive/plans/{plan_id}
 - 若 `plan_id` 对应的是未执行的临时预览，前端应尽快引导用户执行保存
 - 若计划不存在，后端返回 `404`
 
-### 10.2 执行并保存规划结果
+### 10.2 打开内置联调 viewer
+
+```http
+GET /api/planner/interactive/plans/{plan_id}/viewer
+```
+
+用途：
+
+- 通过固定 URL 打开仓库内置联调页面并自动回放指定计划
+- 适合调试、验收或外部系统做“查看该计划”跳转
+
+说明：
+
+- 当前实现会返回 `307` 并重定向到 `/api/planner/interactive/console?plan_id={plan_id}`
+- 该接口面向联调 viewer，不替代正式前端页面
+
+### 10.3 执行并保存规划结果
 
 ```http
 POST /api/planner/interactive/plans/{plan_id}/execute
@@ -394,7 +450,7 @@ POST /api/planner/interactive/plans/{plan_id}/execute
 {
   "plan_id": "interactive_plan_xxxxx",
   "created_at": "2026-04-02T08:00:00+00:00",
-  "scene_name": "ncepu",
+  "scene_name": "NCEPU",
   "target_nav_point_ids": ["NP_049", "NP_050"],
   "unassigned_nav_point_ids": [],
   "selection": {
@@ -448,10 +504,12 @@ POST /api/planner/interactive/plans/{plan_id}/execute
 
 - `scene_name`：该计划所属场景，回显计划前应先切到对应场景
 - `selection`：记录规划来源，手选/圈选/语义会不同
+- `selection.matched_asset_ids`、`selection.matched_asset_names`：电力资产语义匹配时会返回
 - `selected_nav_points`：前端可直接用于高亮已命中的任务点
 - `robots[].display_route_local_m`：机器人整条显示路径
 - `robots[].legs[].polyline_local_m`：分段路径，适合做更细粒度展示
 - `visualization.selected_polygon`：圈选模式下的原始多边形
+- `visualization.nav_points`：当前场景完整导航点列表，字段结构与 `GET /assets` 保持一致
 - `persistence.saved`：当前是否已真正保存
 - `persistence.output_dir`：最终输出目录，可用于 UI 提示
 
@@ -459,10 +517,11 @@ POST /api/planner/interactive/plans/{plan_id}/execute
 
 以下内容已在后端落地，但需要正式 `Vite + Vue3` 前端补齐：
 
-- 场景栏对接：前端需要基于 `available_scenes` 渲染场景切换栏，而不是写死 `ncepu`
+- 场景栏对接：前端需要基于 `available_scenes` 渲染场景切换栏，而不是写死某一个场景名
 - 场景切换请求：切换场景时需要重新请求 `GET /api/planner/interactive/assets?scene=<scene_name>`
 - 场景透传：手选、圈选、语义三类创建请求都必须带当前 `scene`
 - 预览与保存解耦：创建规划后不能再默认认为“已经保存”，必须新增“执行计划”按钮调用执行接口
+- viewer 跳转：如需保留调试回放入口，可直接使用 `GET /api/planner/interactive/plans/{plan_id}/viewer`
 - 保存状态展示：UI 需要消费 `persistence.saved`、`persistence.output_dir`、`persistence.saved_at`
 - 计划回显时切场景：如果 `GET /plans/{plan_id}` 返回的 `scene_name` 与当前页面场景不一致，前端应先切换场景再渲染
 - 临时预览提示：未执行的计划只是预览，页面上应有明确提示，避免用户误以为结果已落盘
@@ -471,6 +530,9 @@ POST /api/planner/interactive/plans/{plan_id}/execute
 - 机器狗放置交互：正式前端需要支持用户选中某台机器狗后，再点击地图节点完成放置
 - 配置文件读写：正式前端需要接入 `GET/PUT /api/planner/interactive/robots/config`
 - 规划前校验：当 `robot_config.all_robots_placed=false` 时，应禁用三类规划入口并给出提示
+- 电力资产展示：正式前端需要消费 `nav_points[].power_asset_*` 并支持 `power:substation` 区域图层
+- 电力语义规划：正式前端需要允许用户对变电站、风机、光伏等设施发起语义巡检请求
+- 模板与示例：如要做快捷入口，可直接消费 `available_templates` 和 `semantic_examples`
 
 ## 13. 前端工程建议
 
@@ -496,6 +558,7 @@ const apiBase = import.meta.env.VITE_API_BASE_URL
 - `createSemanticPlan(payload)`
 - `getPlan(planId)`
 - `executePlan(planId)`
+- `getPlanViewerUrl(planId)`
 
 参考实现：
 

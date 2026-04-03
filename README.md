@@ -9,7 +9,9 @@
 - 接收规划任务并生成结果包
 - 提供交互式规划接口和调试控制台
 - 支持手选任务点、框选区域、语义任务三种规划入口
-- 读取校园规划资产、任务点、路网和机器人注册信息
+- 支持多场景资产读取，包括校园与风电场场景
+- 读取任务点、路网、机器人注册信息，以及建筑/电力资产语义数据
+- 支持变电站、风机、光伏等电力设施的语义解析与规划
 - 预留本地模型直载与 OpenAI 兼容接口两类语义解析后端
 - 支持 Docker 化部署、Cloudflare Tunnel 暴露和 ROS2 bridge 联动
 
@@ -26,11 +28,10 @@ mission_planner/
 │   └── static/             # 内置调试页面
 ├── config/                 # planner.yaml 等配置
 ├── data/
-│   ├── assets/ncepu/       # 校园资产主目录
-│   │   ├── world/          # scene.glb / map_data.json / meshes.json 等
-│   │   ├── mission/        # nav_points.geojson / route_graph.json / semantic_catalog.json
-│   │   ├── fleet/          # robot_registry.json
-│   │   └── planning/       # 规划样例与运行产物
+│   ├── assets/
+│   │   ├── NCEPU/          # 校园场景资产
+│   │   ├── wind_power_station/ # 风电场场景资产
+│   │   └── <scene_name>/   # 其他并行场景资产目录
 │   ├── jobs/               # 批处理任务输入
 │   ├── packages/           # 上传的任务包
 │   ├── results/            # 规划结果包
@@ -70,18 +71,22 @@ mission_planner/
 - `GET /api/planner/interactive/console`
 - `GET /api/planner/interactive/assets`
 - `GET /api/planner/interactive/semantic/provider-status`
+- `GET /api/planner/interactive/robots/config`
+- `PUT /api/planner/interactive/robots/config`
 - `POST /api/planner/interactive/plans/manual`
 - `POST /api/planner/interactive/plans/polygon`
 - `POST /api/planner/interactive/plans/semantic`
 - `GET /api/planner/interactive/plans/{plan_id}`
 - `POST /api/planner/interactive/plans/{plan_id}/execute`
+- `GET /api/planner/interactive/plans/{plan_id}/viewer`
 
 说明：
 
 - `GET /api/planner/interactive/console` 仅用于算法联调，不是正式前端页面
 - 三类交互式规划接口现在只生成预览，不会自动落盘
 - 只有调用执行接口后，结果才会写入 `data/outputs/<plan_id>/`
-- 默认资产根目录是 `data/assets/ncepu`
+- 场景资产按 `data/assets/<scene_name>/` 组织，`scene` 取值直接来自目录名，区分大小写
+- 当前仓库已包含 `NCEPU` 和 `wind_power_station` 两套并行场景资产
 
 ## 本地开发
 
@@ -179,7 +184,7 @@ docker logs -f planner-api-lite
 
 默认数据落点：
 
-- 资产目录：`data/assets/ncepu`
+- 资产目录：`data/assets/<scene_name>/`
 - 批处理任务：`data/jobs`
 - 任务包缓存：`data/packages`
 - 批处理结果：`data/results`

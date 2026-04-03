@@ -750,6 +750,14 @@
       };
     }
 
+    const PLAN_PLAYBACK_CONFIG = Object.freeze({
+      simulatedSpeedMps: 22,
+      minDurationMs: 2600,
+      maxDurationMs: 12000,
+      robotStaggerMs: 320,
+      endPauseMs: 1000,
+    });
+
     const state = {
       assets: null,
       bounds: null,
@@ -760,6 +768,7 @@
       selectedNavIds: new Set(),
       polygonVertices: [],
       plan: null,
+      planPlayback: null,
       hoveredNavId: null,
       robotConfig: null,
       robotConfigDraft: null,
@@ -1028,6 +1037,217 @@
       return state.assets?.robots || [];
     }
 
+    function normalizePlanPoint(point) {
+      if (!point) {
+        return null;
+      }
+      const x = Number(point.x);
+      const z = Number(point.z);
+      if (!Number.isFinite(x) || !Number.isFinite(z)) {
+        return null;
+      }
+      return { x, z };
+    }
+
+    function buildPolylineTrack(polyline) {
+      const points = (polyline || []).map(normalizePlanPoint).filter(Boolean);
+      if (!points.length) {
+        return {
+          points: [],
+          cumulativeLengths: [0],
+          totalLengthM: 0,
+        };
+      }
+      const cumulativeLengths = [0];
+      for (let index = 1; index < points.length; index += 1) {
+        const prev = points[index - 1];
+        const next = points[index];
+        const segmentLength = Math.hypot(next.x - prev.x, next.z - prev.z);
+        cumulativeLengths.push(cumulativeLengths[index - 1] + segmentLength);
+      }
+      return {
+        points,
+        cumulativeLengths,
+        totalLengthM: cumulativeLengths[cumulativeLengths.length - 1] || 0,
+      };
+    }
+
+    function clipPolylineAtDistance(track, distanceM) {
+      if (!track.points.length) {
+        return [];
+      }
+      if (track.points.length === 1 || distanceM <= 0) {
+        return [track.points[0]];
+      }
+      if (distanceM >= track.totalLengthM) {
+        return track.points.slice();
+      }
+
+      const partial = [track.points[0]];
+      for (let index = 1; index < track.points.length; index += 1) {
+        const segmentStart = track.cumulativeLengths[index - 1];
+        const segmentEnd = track.cumulativeLengths[index];
+        const currentPoint = track.points[index];
+        if (distanceM >= segmentEnd) {
+          partial.push(currentPoint);
+          continue;
+        }
+        const prevPoint = track.points[index - 1];
+        const span = segmentEnd - segmentStart || 1;
+        const ratio = clamp((distanceM - segmentStart) / span, 0, 1);
+        partial.push({
+          x: prevPoint.x + ((currentPoint.x - prevPoint.x) * ratio),
+          z: prevPoint.z + ((currentPoint.z - prevPoint.z) * ratio),
+        });
+        break;
+      }
+      return partial;
+    }
+
+    function drawPolyline(points) {
+      points.forEach((point, index) => {
+        const canvasPoint = localToCanvas(point.x, point.z);
+        if (index === 0) {
+          ctx.moveTo(canvasPoint.x, canvasPoint.y);
+        } else {
+          ctx.lineTo(canvasPoint.x, canvasPoint.y);
+        }
+      });
+    }
+
+    function buildPlanPlayback(plan) {
+      if (!plan || !Array.isArray(plan.robots) || !plan.robots.length) {
+        return null;
+      }
+      const tracks = plan.robots.map((robot, index) => {
+        const track = buildPolylineTrack(robot.display_route_local_m || []);
+        const durationFromDistance = track.totalLengthM > 0
+          ? (track.totalLengthM / PLAN_PLAYBACK_CONFIG.simulatedSpeedMps) * 1000
+          : PLAN_PLAYBACK_CONFIG.minDurationMs;
+        return {
+          robotId: robot.planning_slot_id,
+          delayMs: index * PLAN_PLAYBACK_CONFIG.robotStaggerMs,
+          durationMs: clamp(
+            durationFromDistance,
+            PLAN_PLAYBACK_CONFIG.minDurationMs,
+            PLAN_PLAYBACK_CONFIG.maxDurationMs,
+          ),
+          ...track,
+        };
+      });
+      const cycleDurationMs = Math.max(
+        PLAN_PLAYBACK_CONFIG.endPauseMs,
+        ...tracks.map((track) => track.delayMs + track.durationMs + PLAN_PLAYBACK_CONFIG.endPauseMs),
+      );
+      return {
+        planId: plan.plan_id || '',
+        startedAtMs: 0,
+        nowMs: 0,
+        cycleDurationMs,
+        rafId: null,
+        tracks,
+      };
+    }
+
+    function stopPlanPlayback() {
+      if (state.planPlayback?.rafId != null) {
+        window.cancelAnimationFrame(state.planPlayback.rafId);
+      }
+      if (state.planPlayback) {
+        state.planPlayback.rafId = null;
+      }
+    }
+
+    function queuePlanPlaybackFrame() {
+      if (!state.planPlayback || state.planPlayback.rafId != null || state.activePanel !== 'planning') {
+        return;
+      }
+      state.planPlayback.rafId = window.requestAnimationFrame((timestamp) => {
+        if (!state.planPlayback) {
+          return;
+        }
+        state.planPlayback.rafId = null;
+        if (!state.planPlayback.startedAtMs) {
+          state.planPlayback.startedAtMs = timestamp;
+        }
+        state.planPlayback.nowMs = timestamp;
+        draw();
+        queuePlanPlaybackFrame();
+      });
+    }
+
+    function restartPlanPlayback() {
+      stopPlanPlayback();
+      state.planPlayback = buildPlanPlayback(state.plan);
+      if (state.planPlayback) {
+        queuePlanPlaybackFrame();
+      }
+    }
+
+    function setPlan(plan) {
+      state.plan = plan;
+      if (!plan) {
+        stopPlanPlayback();
+        state.planPlayback = null;
+        return;
+      }
+      restartPlanPlayback();
+    }
+
+    function playbackStateForTrack(track) {
+      if (!track.points.length) {
+        return {
+          partialPoints: [],
+          headPoint: null,
+          progress: 0,
+          completed: false,
+        };
+      }
+      if (track.totalLengthM <= 0) {
+        return {
+          partialPoints: track.points.slice(0, 1),
+          headPoint: track.points[0],
+          progress: 1,
+          completed: true,
+        };
+      }
+
+      const playback = state.planPlayback;
+      const nowMs = playback?.nowMs || window.performance.now();
+      const startedAtMs = playback?.startedAtMs || nowMs;
+      const cycleDurationMs = Math.max(playback?.cycleDurationMs || 1, 1);
+      const cycleElapsedMs = ((nowMs - startedAtMs) % cycleDurationMs + cycleDurationMs) % cycleDurationMs;
+      const activeElapsedMs = cycleElapsedMs - track.delayMs;
+
+      if (activeElapsedMs <= 0) {
+        return {
+          partialPoints: track.points.slice(0, 1),
+          headPoint: track.points[0],
+          progress: 0,
+          completed: false,
+        };
+      }
+
+      if (activeElapsedMs >= track.durationMs) {
+        return {
+          partialPoints: track.points.slice(),
+          headPoint: track.points[track.points.length - 1],
+          progress: 1,
+          completed: true,
+        };
+      }
+
+      const progress = clamp(activeElapsedMs / track.durationMs, 0, 1);
+      const visibleDistance = track.totalLengthM * progress;
+      const partialPoints = clipPolylineAtDistance(track, visibleDistance);
+      return {
+        partialPoints,
+        headPoint: partialPoints[partialPoints.length - 1] || track.points[0],
+        progress,
+        completed: false,
+      };
+    }
+
     function planningBlockedReason() {
       if (!state.robotConfig) {
         return '正在加载机器狗初始化配置...';
@@ -1058,6 +1278,15 @@
       robotInitPanel.classList.toggle('active', panel === 'robot');
       if (panel === 'robot' && state.robotConfigDraft && state.robotPlacementTargetIndex == null) {
         state.robotPlacementTargetIndex = firstUnplacedRobotIndex(state.robotConfigDraft);
+      }
+      if (panel === 'planning') {
+        if (state.plan) {
+          restartPlanPlayback();
+        } else {
+          queuePlanPlaybackFrame();
+        }
+      } else {
+        stopPlanPlayback();
       }
       renderLegend();
       renderRobotInitialization();
@@ -1377,24 +1606,67 @@
       if (!state.plan || state.activePanel === 'robot') {
         return;
       }
-      state.plan.robots.forEach((robot) => {
-        const polyline = robot.display_route_local_m || [];
-        if (!polyline.length) {
+      const trackByRobotId = new Map((state.planPlayback?.tracks || []).map((track) => [track.robotId, track]));
+      state.plan.robots.forEach((robot, index) => {
+        const track = trackByRobotId.get(robot.planning_slot_id) || buildPolylineTrack(robot.display_route_local_m || []);
+        if (!track.points.length) {
           return;
         }
+
+        const playback = playbackStateForTrack(track);
+        const previewLabel = String(robot.index || index + 1);
+
         ctx.save();
         ctx.strokeStyle = robot.color || '#444444';
-        ctx.lineWidth = 3;
+        ctx.globalAlpha = 0.16;
+        ctx.lineWidth = 2.4;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         ctx.beginPath();
-        polyline.forEach((point, index) => {
-          const canvasPoint = localToCanvas(point.x, point.z);
-          if (index === 0) {
-            ctx.moveTo(canvasPoint.x, canvasPoint.y);
-          } else {
-            ctx.lineTo(canvasPoint.x, canvasPoint.y);
-          }
-        });
+        drawPolyline(track.points);
         ctx.stroke();
+        ctx.restore();
+
+        if (playback.partialPoints.length >= 2) {
+          ctx.save();
+          ctx.strokeStyle = robot.color || '#444444';
+          ctx.lineWidth = 3.4;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.beginPath();
+          drawPolyline(playback.partialPoints);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        if (!playback.headPoint) {
+          return;
+        }
+
+        const head = localToCanvas(playback.headPoint.x, playback.headPoint.z);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(head.x, head.y, playback.completed ? 7.8 : 7, 0, Math.PI * 2);
+        ctx.fillStyle = robot.color || '#444444';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.stroke();
+
+        ctx.fillStyle = 'white';
+        ctx.font = '10px "Noto Sans SC", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(previewLabel, head.x, head.y);
+
+        if (playback.completed) {
+          ctx.beginPath();
+          ctx.arc(head.x, head.y, 12, 0, Math.PI * 2);
+          ctx.strokeStyle = robot.color || '#444444';
+          ctx.globalAlpha = 0.28;
+          ctx.lineWidth = 1.6;
+          ctx.stroke();
+        }
         ctx.restore();
       });
     }
@@ -1661,7 +1933,7 @@
     function resetPlannerView() {
       state.selectedNavIds.clear();
       state.polygonVertices = [];
-      state.plan = null;
+      setPlan(null);
       state.hoveredNavId = null;
       computeBounds();
       renderSelectedNavList();
@@ -1674,7 +1946,7 @@
     function clearPlannerInteractionState() {
       state.selectedNavIds.clear();
       state.polygonVertices = [];
-      state.plan = null;
+      setPlan(null);
       state.hoveredNavId = null;
     }
 
@@ -1724,7 +1996,7 @@
       if (plan.scene_name && plan.scene_name !== state.currentScene) {
         await loadAssets(plan.scene_name);
       }
-      state.plan = plan;
+      setPlan(plan);
       renderPlanSummary();
       draw();
     }
@@ -1781,7 +2053,7 @@
       if (!response.ok) {
         throw new Error(data.detail || 'planning request failed');
       }
-      state.plan = data;
+      setPlan(data);
       renderPlanSummary();
       draw();
       setStatus(`${successLabel}，当前仅生成预览：${data.plan_id}。点击“执行计划并保存”后才会写入 data/outputs。`);
@@ -1803,7 +2075,7 @@
       if (!response.ok) {
         throw new Error(data.detail || 'execute plan failed');
       }
-      state.plan = data;
+      setPlan(data);
       renderPlanSummary();
       draw();
       setStatus(`计划已执行并保存到 ${data.persistence?.output_dir || 'data/outputs'}`);
