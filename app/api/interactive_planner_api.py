@@ -18,6 +18,7 @@ from app.services.interactive_plan_service import (
     execute_plan,
     get_console_payload,
     get_plan,
+    list_saved_plan_ids,
 )
 from app.services.runtime_robot_service import get_runtime_robot_config, save_runtime_robot_config
 from app.services.semantic_llm_service import semantic_llm_provider_status
@@ -105,6 +106,11 @@ def create_semantic_interactive_plan(payload: SemanticPlanCreate):
         return create_semantic_plan(query=payload.query, use_llm=payload.use_llm, scene_name=payload.scene)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/plans")
+def list_interactive_plans():
+    return list_saved_plan_ids()
 
 
 @router.get("/plans/{plan_id}")

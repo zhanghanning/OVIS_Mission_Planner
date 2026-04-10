@@ -1,0 +1,23 @@
+FROM debian:bookworm-slim
+
+ARG FRP_VERSION=0.65.0
+ARG FRP_SHA256=52ced8c5fdf772f48a9909da4c10c7568c061861946ac9af7a86eeaf14b7e6d5
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    tar \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL -o /tmp/frp.tar.gz \
+      "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_amd64.tar.gz" \
+    && echo "${FRP_SHA256}  /tmp/frp.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/frp.tar.gz -C /tmp \
+    && install -m 0755 "/tmp/frp_${FRP_VERSION}_linux_amd64/frpc" /usr/local/bin/frpc \
+    && mkdir -p /etc/frp \
+    && rm -rf /tmp/frp.tar.gz "/tmp/frp_${FRP_VERSION}_linux_amd64"
+
+COPY deploy/docker/start_frpc.sh /usr/local/bin/start_frpc.sh
+RUN chmod +x /usr/local/bin/start_frpc.sh
+
+ENTRYPOINT ["/usr/local/bin/start_frpc.sh"]

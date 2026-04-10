@@ -49,6 +49,10 @@ def _output_root(plan_id: str) -> Path:
     return _settings().base_dir / _output_root_relative(plan_id)
 
 
+def _output_base_dir() -> Path:
+    return _settings().base_dir / "data" / "outputs"
+
+
 def _dedupe_polyline(points: Sequence[Dict]) -> List[Dict]:
     deduped: List[Dict] = []
     for point in points:
@@ -441,6 +445,31 @@ def get_plan(plan_id: str) -> Dict:
     raise FileNotFoundError(plan_id)
 
 
+def list_saved_plan_ids() -> Dict:
+    output_base_dir = _output_base_dir()
+    if not output_base_dir.exists():
+        return {
+            "plan_ids": [],
+            "count": 0,
+        }
+
+    plan_dirs = []
+    for child in output_base_dir.iterdir():
+        if not child.is_dir():
+            continue
+        if not child.name.startswith("interactive_plan_"):
+            continue
+        if not (child / "plan_result.json").exists():
+            continue
+        plan_dirs.append(child)
+
+    plan_dirs.sort(key=lambda item: (item.stat().st_mtime, item.name), reverse=True)
+    return {
+        "plan_ids": [item.name for item in plan_dirs],
+        "count": len(plan_dirs),
+    }
+
+
 def execute_plan(plan_id: str) -> Dict:
     cached = _get_cached_plan_preview(plan_id)
     if cached is None:
@@ -483,6 +512,7 @@ def get_console_payload(scene_name: str | None = None) -> Dict:
     payload["plan_api"] = {
         "assets": "/api/planner/interactive/assets",
         "robot_config": "/api/planner/interactive/robots/config",
+        "list_saved": "/api/planner/interactive/plans",
         "manual": "/api/planner/interactive/plans/manual",
         "polygon": "/api/planner/interactive/plans/polygon",
         "semantic": "/api/planner/interactive/plans/semantic",

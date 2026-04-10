@@ -69,6 +69,26 @@ services:
     command: ["tunnel", "--no-autoupdate", "run", "--token", "${CLOUDFLARE_TUNNEL_TOKEN}"]
     restart: unless-stopped
 
+  public-frp-tcp:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.frpc
+      args:
+        FRP_VERSION: ${FRP_VERSION}
+    image: mission-planner:frpc
+    container_name: planner-public-frp-tcp
+    depends_on:
+      - planner-api-lite
+    environment:
+      FRP_SERVER_ADDR: ${FRP_SERVER_ADDR}
+      FRP_SERVER_PORT: ${FRP_SERVER_PORT}
+      FRP_AUTH_TOKEN: ${FRP_AUTH_TOKEN}
+      FRP_REMOTE_PORT: ${FRP_REMOTE_PORT}
+      FRP_PROXY_NAME: ${FRP_PROXY_NAME}
+    volumes:
+      - ./frpc.toml:/etc/frp/frpc.toml:ro
+    restart: unless-stopped
+
   planner-api-geo:
     build:
       context: ../..

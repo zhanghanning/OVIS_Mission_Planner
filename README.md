@@ -58,6 +58,8 @@
   跳转到内置联调 viewer 回放指定计划。
 - `GET /api/planner/interactive/console`
   内置联调页面，仅作调试参考，不是正式前端。
+- `GET /api/planner/interactive/plans`
+  返回 `data/outputs/` 下所有已保存的 `interactive_plan_*` 目录名。
 
 ## 项目结构
 
@@ -359,6 +361,7 @@ deploy/docker/.env
 - `POST /api/planner/interactive/plans/manual`
 - `POST /api/planner/interactive/plans/polygon`
 - `POST /api/planner/interactive/plans/semantic`
+- `GET /api/planner/interactive/plans`
 - `GET /api/planner/interactive/plans/{plan_id}`
 - `POST /api/planner/interactive/plans/{plan_id}/execute`
 - `GET /api/planner/interactive/plans/{plan_id}/viewer`
@@ -368,9 +371,10 @@ deploy/docker/.env
 1. 读取 `assets`
 2. 读取或保存 `robots/config`
 3. 创建手选、圈选或语义规划预览
-4. 查看 `plan_id` 对应预览结果
-5. 调用 `execute` 保存到 `data/outputs/<plan_id>/`
-6. 如需联调回放，可调用 `viewer`
+4. 如需展示历史记录，可先请求 `GET /api/planner/interactive/plans` 获取已保存 `plan_id` 列表
+5. 查看 `plan_id` 对应预览结果或已保存结果
+6. 调用 `execute` 保存到 `data/outputs/<plan_id>/`
+7. 如需联调回放，可调用 `viewer`
 
 ## 常用脚本
 

@@ -15,6 +15,7 @@
 - 手动规划、圈选规划、语义规划都不会在创建时自动落盘
 - 新增 `POST /api/planner/interactive/plans/{plan_id}/execute`，只有点击执行后才会保存
 - 新增 `GET /api/planner/interactive/plans/{plan_id}/viewer`，可按计划 ID 跳转到内置联调 viewer
+- 新增 `GET /api/planner/interactive/plans`，可列出 `data/outputs/` 下已保存的 `interactive_plan_*` 结果目录名
 - 三类规划结果统一保存到 `data/outputs/<plan_id>/`
 - 资产读取和规划创建都已支持 `scene` 场景参数
 - 资产接口会返回 `current_scene`、`available_scenes`、`scene_name`
@@ -48,6 +49,7 @@
 - `POST /api/planner/interactive/plans/manual`
 - `POST /api/planner/interactive/plans/polygon`
 - `POST /api/planner/interactive/plans/semantic`
+- `GET /api/planner/interactive/plans`
 - `GET /api/planner/interactive/plans/{plan_id}`
 - `POST /api/planner/interactive/plans/{plan_id}/execute`
 - `GET /api/planner/interactive/plans/{plan_id}/viewer`
@@ -159,6 +161,7 @@ GET /api/planner/interactive/assets?scene=<scene_name>
   "plan_api": {
     "assets": "/api/planner/interactive/assets",
     "robot_config": "/api/planner/interactive/robots/config",
+    "list_saved": "/api/planner/interactive/plans",
     "manual": "/api/planner/interactive/plans/manual",
     "polygon": "/api/planner/interactive/plans/polygon",
     "semantic": "/api/planner/interactive/plans/semantic",
@@ -178,6 +181,7 @@ GET /api/planner/interactive/assets?scene=<scene_name>
 - `available_templates` 为当前场景完整任务模板列表，正式前端可直接消费
 - `semantic_examples` 为模板里的自然语言示例列表，适合填充语义输入提示或快捷短语
 - `plan_api` 为当前调试控制台使用的接口模板，正式前端可参考但不必依赖它生成全部 URL
+- `plan_api.list_saved` 可用于获取后端已保存的规划结果目录名列表
 
 前端重点处理：
 
@@ -392,7 +396,35 @@ POST /api/planner/interactive/plans/semantic
 
 ## 10. 规划结果读取与执行
 
-### 10.1 查询规划结果
+### 10.1 列出已保存规划结果
+
+```http
+GET /api/planner/interactive/plans
+```
+
+用途：
+
+- 获取 `data/outputs/` 下所有已保存的 `interactive_plan_*` 文件夹名称
+- 供前端先拿到 `plan_id` 列表，再逐个请求 `GET /api/planner/interactive/plans/{plan_id}`
+
+示例响应：
+
+```json
+{
+  "plan_ids": [
+    "interactive_plan_94674fa055",
+    "interactive_plan_403aa87232"
+  ],
+  "count": 2
+}
+```
+
+说明：
+
+- 仅返回目录名以 `interactive_plan_` 开头、且已存在 `plan_result.json` 的结果目录
+- 返回顺序按目录最近修改时间倒序排列
+
+### 10.2 查询规划结果
 
 ```http
 GET /api/planner/interactive/plans/{plan_id}
@@ -409,7 +441,7 @@ GET /api/planner/interactive/plans/{plan_id}
 - 若 `plan_id` 对应的是未执行的临时预览，前端应尽快引导用户执行保存
 - 若计划不存在，后端返回 `404`
 
-### 10.2 打开内置联调 viewer
+### 10.3 打开内置联调 viewer
 
 ```http
 GET /api/planner/interactive/plans/{plan_id}/viewer
@@ -425,7 +457,7 @@ GET /api/planner/interactive/plans/{plan_id}/viewer
 - 当前实现会返回 `307` 并重定向到 `/api/planner/interactive/console?plan_id={plan_id}`
 - 该接口面向联调 viewer，不替代正式前端页面
 
-### 10.3 执行并保存规划结果
+### 10.4 执行并保存规划结果
 
 ```http
 POST /api/planner/interactive/plans/{plan_id}/execute
@@ -522,6 +554,7 @@ POST /api/planner/interactive/plans/{plan_id}/execute
 - 场景透传：手选、圈选、语义三类创建请求都必须带当前 `scene`
 - 预览与保存解耦：创建规划后不能再默认认为“已经保存”，必须新增“执行计划”按钮调用执行接口
 - viewer 跳转：如需保留调试回放入口，可直接使用 `GET /api/planner/interactive/plans/{plan_id}/viewer`
+- 已保存结果列表：如需展示历史规划入口，可直接使用 `GET /api/planner/interactive/plans`
 - 保存状态展示：UI 需要消费 `persistence.saved`、`persistence.output_dir`、`persistence.saved_at`
 - 计划回显时切场景：如果 `GET /plans/{plan_id}` 返回的 `scene_name` 与当前页面场景不一致，前端应先切换场景再渲染
 - 临时预览提示：未执行的计划只是预览，页面上应有明确提示，避免用户误以为结果已落盘
@@ -556,6 +589,7 @@ const apiBase = import.meta.env.VITE_API_BASE_URL
 - `createManualPlan(payload)`
 - `createPolygonPlan(payload)`
 - `createSemanticPlan(payload)`
+- `listSavedPlans()`
 - `getPlan(planId)`
 - `executePlan(planId)`
 - `getPlanViewerUrl(planId)`

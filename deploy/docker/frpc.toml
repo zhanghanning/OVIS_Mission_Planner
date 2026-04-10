@@ -1,0 +1,13 @@
+serverAddr = "{{ .Envs.FRP_SERVER_ADDR }}"
+serverPort = {{ .Envs.FRP_SERVER_PORT }}
+loginFailExit = true
+
+auth.method = "token"
+auth.token = "{{ .Envs.FRP_AUTH_TOKEN }}"
+
+[[proxies]]
+name = "{{ .Envs.FRP_PROXY_NAME }}"
+type = "tcp"
+localIP = "planner-api-lite"
+localPort = 8081
+remotePort = {{ .Envs.FRP_REMOTE_PORT }}

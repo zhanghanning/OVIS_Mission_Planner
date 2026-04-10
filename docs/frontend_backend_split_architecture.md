@@ -62,6 +62,7 @@ http://192.168.1.100:8081
 - 规划结果增加 `scene_name`
 - 规划结果增加 `persistence`
 - 语义规划已支持 `power_infrastructure`、`substation`、`wind_turbine`、`solar_generator`
+- 新增已保存结果列表接口：`GET /api/planner/interactive/plans`
 - 新增执行接口：`POST /api/planner/interactive/plans/{plan_id}/execute`
 - 新增 viewer 跳转接口：`GET /api/planner/interactive/plans/{plan_id}/viewer`
 - 规划输出目录统一到 `data/outputs/<plan_id>/`
@@ -77,6 +78,7 @@ http://192.168.1.100:8081
 - 规划前需要读取 `robot_config.all_robots_placed`，未完成放置时禁用规划入口
 - 创建手选、圈选、语义规划时传入当前 `scene`
 - 增加“执行计划”按钮，不再把预览结果当作已保存结果
+- 如需展示历史规划记录，需要先请求 `GET /api/planner/interactive/plans` 获取可回放的 `plan_id`
 - 如需联调回放入口，可复用 `GET /api/planner/interactive/plans/{plan_id}/viewer`
 - 展示 `persistence.saved`、`persistence.output_dir`、`persistence.saved_at`
 - 回显已有计划时，先按 `scene_name` 切换到对应场景再渲染
