@@ -27,6 +27,7 @@ from app.services.runtime_robot_service import (
     build_runtime_robot_to_nav_costs,
     get_runtime_robot_config,
 )
+from app.services.ros_task_payload_service import build_ros_task_payloads
 from app.services.semantic_service import resolve_semantic_targets, validate_nav_point_ids
 
 _PLAN_CACHE_LOCK = Lock()
@@ -229,6 +230,7 @@ def _build_plan_artifacts(
             for robot in raw_result["robots"]
         ],
     }
+    raw_result["ros_task_payloads"] = build_ros_task_payloads(raw_result, scene_name=scene_name)
     return raw_result
 
 

@@ -20,6 +20,7 @@
 - 资产读取和规划创建都已支持 `scene` 场景参数
 - 资产接口会返回 `current_scene`、`available_scenes`、`scene_name`
 - 规划结果会返回 `scene_name` 和 `persistence` 元数据，前端可据此显示当前场景和保存状态
+- 规划结果会返回 `ros_task_payloads`，用于总后台转发给 ROS 端 `uran_autotask`
 - 机器人初始化不再固定为 3 台，也不再固定在北门、南门、教12B
 - 新增运行时机器人初始化配置接口，支持用户输入机器狗数量并在地图已有节点上放置机器狗
 - 机器人初始化配置会以 JSON 保存到本地，并在系统启动后自动读取
@@ -53,6 +54,13 @@
 - `GET /api/planner/interactive/plans/{plan_id}`
 - `POST /api/planner/interactive/plans/{plan_id}/execute`
 - `GET /api/planner/interactive/plans/{plan_id}/viewer`
+
+说明：
+
+- `mission_planner` 对总后台提供的是 HTTP 接口。
+- ROS 端接收总后台任务的入口不在 `mission_planner` 内，而在机器狗侧 `uran_autotask`。
+- 当前 ROS 端下行入口为 `/uran/core/downlink/task_ctrl`，消息类型为 `uran_msgs/msg/TaskCtrlCmd`。
+- `mission_planner` 不生成 `uran_dispatch` 这类 ROS 内部转发包；ROS 下发细节由总后台、`uran_core` 和 `uran_autotask` 处理。
 
 ## 4. 健康检查
 
@@ -478,6 +486,25 @@ POST /api/planner/interactive/plans/{plan_id}/execute
 
 三种规划创建接口和执行接口返回的数据结构基本一致，前端至少需要消费以下字段：
 
+### 11.1 当前链路边界
+
+已在 `mission_planner` 侧落地并经过测试的部分：
+
+- 总后台前端调用 `mission_planner` 的手选、圈选、语义规划接口后，可以拿到规划结果。
+- 规划结果中会包含 `ros_task_payloads`，每个元素对应一台实际分到路线的机器人。
+- 总后台可以把某个 `ros_task_payloads[]` 元素原样序列化为 JSON，再放入 ROS 下行消息的 `task_params_json`。
+- `ros_task_payloads[]` 的 JSON 可以被 ROS 端 `uran_autotask` 的新版解析器解析为户外执行点序列。
+
+还不能仅凭当前仓库代码断言已经打通的部分：
+
+- 总后台是否已经把 `ros_task_payloads[]` 正确转发到机器狗 ROS 端。
+- 机器狗 ROS 端收到任务后是否已经完成真实导航动作触发、状态回传和异常闭环。
+- GPS、视觉里程计和 Nav2 在真机户外场景下的整体闭环效果。
+
+因此目前准确结论是：`mission_planner -> ROS 任务包 -> uran_autotask 解析` 这一段已经打通；总后台转发和真机执行还需要端到端联调证明。
+
+### 11.2 核心响应示例
+
 ```json
 {
   "plan_id": "interactive_plan_xxxxx",
@@ -511,6 +538,35 @@ POST /api/planner/interactive/plans/{plan_id}/execute
       ]
     }
   ],
+  "ros_task_payloads": [
+    {
+      "schema_version": "1.2.0",
+      "task_type": "mission_planner_route",
+      "task_id": "mp_interactive_plan_xxxxx_cyberdog2_01",
+      "planner_result_id": "interactive_plan_xxxxx",
+      "scene_name": "NCEPU",
+      "robot": {
+        "planning_slot_id": "slot_01",
+        "hardware_id": "cyberdog2_01",
+        "display_name": "机器狗 1"
+      },
+      "route": {
+        "route_nav_point_ids": ["NP_049"],
+        "points": [
+          {
+            "seq": 0,
+            "point_id": "start_slot_01",
+            "kind": "start",
+            "local": {"x": 10.0, "y": 0.0, "z": 20.0},
+            "map": {"frame_id": "map", "x": 10.0, "y": 20.0, "z": 0.0},
+            "geo": {"lat": 38.0, "lon": 115.0, "alt": 0.0, "source": "nav_point"},
+            "required": false,
+            "allow_skip": true
+          }
+        ]
+      }
+    }
+  ],
   "visualization": {
     "bounds_local_m": {
       "min_x": 0.0,
@@ -540,34 +596,50 @@ POST /api/planner/interactive/plans/{plan_id}/execute
 - `selected_nav_points`：前端可直接用于高亮已命中的任务点
 - `robots[].display_route_local_m`：机器人整条显示路径
 - `robots[].legs[].polyline_local_m`：分段路径，适合做更细粒度展示
+- `ros_task_payloads`：只包含实际分到路径的机器人；没有任务的机器人不会生成空任务包
+- `ros_task_payloads[].route.points[]`：给机器人执行的细粒度路径点，包含 `geo` 地理坐标、`local` 局部坐标和 `map` 坐标
+- `ros_task_payloads[].route.points[].geo`：WGS84 地理坐标，字段为 `lat/lon/alt`；地面机器可以只读 `lat/lon`，空中机器可以同时读取 `alt`
+- `ros_task_payloads[].route.points[].local`：任务规划局部坐标，字段为 `x/y/z`，其中 `x` 朝东，`z` 朝北，`y` 朝上，单位都是米
+- `ros_task_payloads[].route.points[].map`：ROS 坐标，当前约定 `map.x = local.x`，`map.y = local.z`，`map.z = local.y`
 - `visualization.selected_polygon`：圈选模式下的原始多边形
 - `visualization.nav_points`：当前场景完整导航点列表，字段结构与 `GET /assets` 保持一致
 - `persistence.saved`：当前是否已真正保存
 - `persistence.output_dir`：最终输出目录，可用于 UI 提示
 
-## 12. 新增但正式前端尚未对接的重点
+### 11.3 总后台转发约定
 
-以下内容已在后端落地，但需要正式 `Vite + Vue3` 前端补齐：
+`mission_planner` 不直接连接 ROS，也不负责把任务发给机器狗。总后台拿到规划结果后，应按下面规则转发：
 
-- 场景栏对接：前端需要基于 `available_scenes` 渲染场景切换栏，而不是写死某一个场景名
-- 场景切换请求：切换场景时需要重新请求 `GET /api/planner/interactive/assets?scene=<scene_name>`
-- 场景透传：手选、圈选、语义三类创建请求都必须带当前 `scene`
-- 预览与保存解耦：创建规划后不能再默认认为“已经保存”，必须新增“执行计划”按钮调用执行接口
-- viewer 跳转：如需保留调试回放入口，可直接使用 `GET /api/planner/interactive/plans/{plan_id}/viewer`
-- 已保存结果列表：如需展示历史规划入口，可直接使用 `GET /api/planner/interactive/plans`
-- 保存状态展示：UI 需要消费 `persistence.saved`、`persistence.output_dir`、`persistence.saved_at`
-- 计划回显时切场景：如果 `GET /plans/{plan_id}` 返回的 `scene_name` 与当前页面场景不一致，前端应先切换场景再渲染
-- 临时预览提示：未执行的计划只是预览，页面上应有明确提示，避免用户误以为结果已落盘
-- 机器狗初始化页：正式前端需要新增与路径规划并列的“机器狗初始化”面板
-- 机器狗数量输入：正式前端不能再假设机器人固定为 3 台
-- 机器狗放置交互：正式前端需要支持用户选中某台机器狗后，再点击地图节点完成放置
-- 配置文件读写：正式前端需要接入 `GET/PUT /api/planner/interactive/robots/config`
-- 规划前校验：当 `robot_config.all_robots_placed=false` 时，应禁用三类规划入口并给出提示
-- 电力资产展示：正式前端需要消费 `nav_points[].power_asset_*` 并支持 `power:substation` 区域图层
-- 电力语义规划：正式前端需要允许用户对变电站、风机、光伏等设施发起语义巡检请求
-- 模板与示例：如要做快捷入口，可直接消费 `available_templates` 和 `semantic_examples`
+- 遍历 `ros_task_payloads`。
+- 用 `ros_task_payloads[].robot.hardware_id` 或 `ros_task_payloads[].robot.planning_slot_id` 选择目标机器狗。
+- 将单个 `ros_task_payloads[]` 元素原样序列化为 JSON 字符串，作为 `TaskCtrlCmd.task_params_json`。
+- 向机器狗 ROS 端发布 `uran_msgs/msg/TaskCtrlCmd`。
+- ROS 话题为 `/uran/core/downlink/task_ctrl`。
+- ROS 消息类型为 `uran_msgs/msg/TaskCtrlCmd`。
 
-## 13. 前端工程建议
+`TaskCtrlCmd` 字段对应关系：
+
+- `msg_version`：由总后台或 `uran_core` 填写，建议当前用 `"1.0"`
+- `task_id`：取 `ros_task_payloads[].task_id`
+- `action`：规划下发时填 `"start"`
+- `task_type`：取 `ros_task_payloads[].task_type`，当前为 `"mission_planner_route"`
+- `task_params_json`：单个 `ros_task_payloads[]` 元素的 JSON 字符串
+- `timestamp_ns`：由总后台或 ROS 端下发适配层填真实纳秒时间
+
+ROS 端当前接收入口：
+
+- 节点：`uran_autotask`
+- 订阅话题：`/uran/core/downlink/task_ctrl`
+- 消息类型：`uran_msgs/msg/TaskCtrlCmd`
+- 处理逻辑：`action=start` 时解析 `task_params_json`，识别 `task_type=mission_planner_route`，生成户外执行点序列并触发导航调度
+
+ROS 端设备应根据自身能力读取有效字段：
+
+- 地面机器狗：主要读取 `map.x/map.y` 或 `geo.lat/geo.lon`，高度字段可忽略或只作为记录。
+- 空中设备：可同时读取 `geo.alt`、`local.y` 或 `map.z`，并结合自身飞控坐标系转换。
+- 如果某类设备有自己的高度基准，例如相对起飞点高度、海拔高度或场景高度，总后台或设备端需要在自己的适配层明确转换；`mission_planner` 当前只保证字段存在，不保证不同设备的高度基准已经完成实地标定。
+
+## 12. 前端工程建议
 
 前端 `.env` 推荐：
 
