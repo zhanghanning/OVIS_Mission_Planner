@@ -9,3 +9,5 @@ __pycache__/
 技术交底书.md
 
 data/
+.pytest_cache/
+.env

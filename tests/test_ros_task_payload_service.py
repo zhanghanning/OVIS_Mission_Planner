@@ -1,15 +1,28 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from app.services.interactive_plan_service import create_manual_plan
 from app.services.ros_task_payload_service import build_ros_task_payloads
 
 
-def test_build_ros_task_payloads_from_saved_plan_result():
-    plan_path = Path(__file__).resolve().parents[1] / "data" / "outputs" / "interactive_plan_1859b62319" / "plan_result.json"
-    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+def _ncepu_robot_config():
+    return {
+        "robot_count": 2,
+        "robots": [
+            {"anchor_nav_point_id": "NP_001"},
+            {"anchor_nav_point_id": "NP_049"},
+        ],
+    }
+
+
+def test_build_ros_task_payloads_from_plan_result():
+    plan = create_manual_plan(
+        ["NP_015"],
+        robot_config=_ncepu_robot_config(),
+        scene_name="NCEPU",
+        mission_label="ros payload test",
+    )
 
     payloads = build_ros_task_payloads(plan, scene_name=plan["scene_name"])
 
@@ -48,10 +61,16 @@ def test_build_ros_task_payloads_from_saved_plan_result():
 
 
 def test_interactive_plan_result_contains_only_non_empty_ros_task_payloads():
-    result = create_manual_plan(["NP_015"], scene_name="NCEPU", mission_label="ros payload test")
+    result = create_manual_plan(
+        ["NP_015"],
+        robot_config=_ncepu_robot_config(),
+        scene_name="NCEPU",
+        mission_label="ros payload test",
+    )
 
     payloads = result["ros_task_payloads"]
     assert payloads
+    assert "persistence" not in result
     assert all(payload["route"]["points"] for payload in payloads)
 
     assigned_robot_ids = {

@@ -33,9 +33,21 @@ class FormalMultiRobotNativeParityTest(unittest.TestCase):
         if not native_planner_available():
             raise unittest.SkipTest("native planner library is not available after build")
 
-        cls.scene_name = resolve_scene_name(None)
-        cls.planner_problem = build_runtime_planner_problem(cls.scene_name, require_all_placed=False)
-        cls.robot_to_nav_costs = build_runtime_robot_to_nav_costs(cls.scene_name, require_all_placed=False)
+        cls.scene_name = resolve_scene_name("NCEPU")
+        cls.robot_config = {
+            "robot_count": 3,
+            "robots": [
+                {"anchor_nav_point_id": "NP_001"},
+                {"anchor_nav_point_id": "NP_049"},
+                {"anchor_nav_point_id": "NP_058"},
+            ],
+        }
+        cls.planner_problem = build_runtime_planner_problem(cls.robot_config, cls.scene_name)
+        cls.robot_to_nav_costs = build_runtime_robot_to_nav_costs(
+            cls.robot_config,
+            cls.scene_name,
+            planner_problem=cls.planner_problem,
+        )
         cls.nav_to_nav_costs = load_nav_to_nav_costs(cls.scene_name)
         cls.target_nav_ids = sorted(nav_point_index(cls.scene_name).keys())[:12]
         if not cls.target_nav_ids:

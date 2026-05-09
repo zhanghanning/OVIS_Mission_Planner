@@ -576,7 +576,7 @@
                 <button id="resetViewBtn">重置视图</button>
               </div>
               <p class="muted" id="modeHint">当前模式：手选任务点。点击地图上的圆点即可增删目标点；重置视图会同时清空预览路径、已选点和框选点。</p>
-              <p class="muted compact-copy" id="planningGuardHint">正在检查机器狗初始化配置...</p>
+              <p class="muted compact-copy" id="planningGuardHint">正在准备机器狗配置...</p>
             </div>
 
             <div class="card">
@@ -608,9 +608,9 @@
             <div class="card">
               <h2>规划摘要</h2>
               <div class="toolbar" style="margin-bottom: 10px;">
-                <button id="executePlanBtn" class="primary" disabled>先生成规划预览</button>
+                <button id="executePlanBtn" class="primary" disabled>等待规划结果</button>
               </div>
-              <p class="muted scroll-inline" id="planStorageHint">当前不会自动保存规划结果。点击“执行计划并保存”后，结果才会写入 data/outputs。</p>
+              <p class="muted scroll-inline" id="planStorageHint">FastAPI 只返回本次计算结果；保存和下发由总后台处理。</p>
               <div class="kpis">
                 <div class="kpi">
                   已分配目标
@@ -644,14 +644,14 @@
             </div>
 
             <div class="card">
-              <h2>配置文件</h2>
+              <h2>会话配置</h2>
               <div class="toolbar">
-                <button id="reloadRobotConfigBtn">从配置文件加载</button>
-                <button id="saveRobotConfigBtn" class="primary">保存初始化配置</button>
+                <button id="reloadRobotConfigBtn">恢复场景默认</button>
+                <button id="saveRobotConfigBtn" class="primary">应用到当前会话</button>
               </div>
               <div class="robot-config-summary">
                 <div class="robot-config-item">
-                  配置文件路径
+                  配置来源
                   <strong id="robotConfigPath" class="scroll-inline">-</strong>
                 </div>
                 <div class="robot-config-item">
@@ -995,7 +995,7 @@
       };
     }
 
-    function decorateRobotDraft(robots, source = 'draft') {
+    function decorateRobotDraft(robots, source = 'session') {
       const placedRobotIds = robots.filter((robot) => robot.placed).map((robot) => robot.planning_slot_id);
       const unplacedRobotIds = robots.filter((robot) => !robot.placed).map((robot) => robot.planning_slot_id);
       return {
@@ -1005,9 +1005,7 @@
         all_robots_placed: unplacedRobotIds.length === 0,
         placed_robot_ids: placedRobotIds,
         unplaced_robot_ids: unplacedRobotIds,
-        config_path: state.robotConfig?.config_path || '',
         source,
-        updated_at: state.robotConfig?.updated_at || null,
         robots,
       };
     }
@@ -1034,7 +1032,23 @@
       if (state.activePanel === 'robot' && state.robotConfigDraft) {
         return state.robotConfigDraft.robots;
       }
-      return state.assets?.robots || [];
+      return state.robotConfig?.robots || state.assets?.robots || [];
+    }
+
+    function buildRobotConfigPayload() {
+      if (!state.robotConfig || !state.robotConfig.all_robots_placed) {
+        throw new Error(planningBlockedReason() || '机器狗配置未完成');
+      }
+      return {
+        robot_count: state.robotConfig.robot_count,
+        robots: state.robotConfig.robots.map((robot) => ({
+          planning_slot_id: robot.planning_slot_id,
+          hardware_id: robot.hardware_id,
+          display_name: robot.display_name,
+          color: robot.color,
+          anchor_nav_point_id: robot.anchor_nav_point_id,
+        })),
+      };
     }
 
     function normalizePlanPoint(point) {
@@ -1250,10 +1264,10 @@
 
     function planningBlockedReason() {
       if (!state.robotConfig) {
-        return '正在加载机器狗初始化配置...';
+        return '正在准备机器狗配置...';
       }
       if (!state.robotConfig.all_robots_placed) {
-        return `请先在“机器狗初始化”页完成 ${state.robotConfig.unplaced_robot_ids.join('、')} 的位置放置并保存配置。`;
+        return `请先在“机器狗初始化”页完成 ${state.robotConfig.unplaced_robot_ids.join('、')} 的位置放置，并应用到当前会话。`;
       }
       return '';
     }
@@ -1759,11 +1773,11 @@
         return;
       }
 
-      robotConfigPath.textContent = config.config_path || '-';
+      robotConfigPath.textContent = config.source === 'session' ? '当前页面内存' : config.source;
       robotConfigPath.title = robotConfigPath.textContent;
       const dirty = robotDraftDirty();
       if (dirty) {
-        robotConfigState.textContent = '有未保存修改';
+        robotConfigState.textContent = '有未应用修改';
       } else if (config.all_robots_placed) {
         robotConfigState.textContent = `已完成 ${config.robot_count} / ${config.robot_count}`;
       } else {
@@ -1772,7 +1786,7 @@
       robotCountInput.value = String(config.robot_count);
       robotInitHint.textContent = config.all_robots_placed
         ? '当前配置已经可用于规划。若需修改数量或位置，可先调整槽位，再点击地图重新放置。'
-        : `当前还需要为 ${config.unplaced_robot_ids.join('、')} 指定节点，完成后记得保存初始化配置。`;
+        : `当前还需要为 ${config.unplaced_robot_ids.join('、')} 指定节点，完成后应用到当前会话。`;
       robotCountHint.textContent = '改变数量后，已有放置会尽量保留；新增机器狗需要再到地图上选点。';
 
       const selectedRobot = config.robots.find((robot) => robot.index === state.robotPlacementTargetIndex) || null;
@@ -1857,8 +1871,8 @@
         currentPlanId.textContent = '-';
         currentPlanId.title = '-';
         executePlanBtn.disabled = true;
-        executePlanBtn.textContent = '先生成规划预览';
-        planStorageHint.textContent = '当前不会自动保存规划结果。点击“执行计划并保存”后，结果才会写入 data/outputs。';
+        executePlanBtn.textContent = '等待规划结果';
+        planStorageHint.textContent = 'FastAPI 只返回本次计算结果；保存和下发由总后台处理。';
         planStorageHint.title = planStorageHint.textContent;
         robotPlans.innerHTML = '<p class="muted">当前还没有规划结果。</p>';
         return;
@@ -1868,13 +1882,9 @@
       totalDistance.textContent = `${state.plan.summary.total_distance_m.toFixed(1)} m`;
       currentPlanId.textContent = state.plan.plan_id;
       currentPlanId.title = currentPlanId.textContent;
-      const persistence = state.plan.persistence || {};
-      const isSaved = Boolean(persistence.saved);
-      executePlanBtn.disabled = isSaved;
-      executePlanBtn.textContent = isSaved ? '已执行并保存' : '执行计划并保存';
-      planStorageHint.textContent = isSaved
-        ? `规划结果已保存到 ${persistence.output_dir || 'data/outputs'}`
-        : `当前为预览计划，尚未保存。点击“执行计划并保存”后会写入 ${persistence.output_dir || 'data/outputs'}`;
+      executePlanBtn.disabled = true;
+      executePlanBtn.textContent = '已生成规划结果';
+      planStorageHint.textContent = '当前结果未在 FastAPI 保存。正式保存和下发请走总后台。';
       planStorageHint.title = planStorageHint.textContent;
 
       robotPlans.innerHTML = '';
@@ -1959,10 +1969,9 @@
       state.assets = await response.json();
       state.currentScene = state.assets.current_scene || state.assets.scene_name || sceneName;
       state.availableScenes = state.assets.available_scenes || [];
-      state.robotConfig = cloneData(state.assets.robot_config || null);
-      state.robotConfigDraft = state.robotConfig
-        ? buildRobotConfigDraft(state.robotConfig.robot_count, state.robotConfig.robots || [])
-        : null;
+      const assetRobots = state.assets.robots || [];
+      state.robotConfig = buildRobotConfigDraft(assetRobots.length || 1, assetRobots);
+      state.robotConfigDraft = cloneData(state.robotConfig);
       state.robotPlacementTargetIndex = firstUnplacedRobotIndex(state.robotConfigDraft);
       renderSceneBar();
       if (clearPlannerState) {
@@ -1987,48 +1996,24 @@
       setStatus(`已切换到场景 ${sceneName}，可以继续查看地图或重新生成规划。`);
     }
 
-    async function loadPlan(planId) {
-      const response = await fetch(`/api/planner/interactive/plans/${encodeURIComponent(planId)}`);
-      if (!response.ok) {
-        throw new Error(`plan load failed: ${response.status}`);
-      }
-      const plan = await response.json();
-      if (plan.scene_name && plan.scene_name !== state.currentScene) {
-        await loadAssets(plan.scene_name);
-      }
-      setPlan(plan);
-      renderPlanSummary();
-      draw();
-    }
-
     async function saveRobotConfig() {
       if (!state.robotConfigDraft) {
         throw new Error('请先加载场景资产');
       }
-      setStatus('正在保存机器狗初始化配置...');
-      const response = await fetch('/api/planner/interactive/robots/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          scene: state.currentScene,
-          robot_count: state.robotConfigDraft.robot_count,
-          robots: state.robotConfigDraft.robots.map((robot) => ({
-            anchor_nav_point_id: robot.anchor_nav_point_id,
-          })),
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.detail || 'save robot config failed');
-      }
-      await loadAssets(state.currentScene);
-      setStatus(`已保存机器狗初始化配置到 ${data.config_path}`);
+      state.robotConfig = cloneData(decorateRobotDraft(state.robotConfigDraft.robots, 'session'));
+      state.robotConfigDraft = cloneData(state.robotConfig);
+      state.robotPlacementTargetIndex = firstUnplacedRobotIndex(state.robotConfigDraft);
+      renderPlanningGuard();
+      renderRobotInitialization();
+      renderLegend();
+      draw();
+      setStatus('已把机器狗初始化配置应用到当前页面会话。规划请求会携带这份 robot_config。');
     }
 
     async function reloadRobotConfig() {
-      setStatus('正在从本地配置文件重新加载机器狗初始化配置...');
+      setStatus('正在恢复当前场景的默认机器狗配置...');
       await loadAssets(state.currentScene);
-      setStatus(`已从 ${state.robotConfig?.config_path || 'data/configs/robot_initialization'} 重新加载当前场景配置。`);
+      setStatus('已恢复场景资产里的默认机器狗配置。');
     }
 
     function applyRobotCountDraft() {
@@ -2039,7 +2024,7 @@
       renderRobotInitialization();
       renderLegend();
       draw();
-      setStatus(`已生成 ${nextCount} 台机器狗的放置槽位。请继续在地图上为每台机器狗选择节点，然后保存配置。`);
+      setStatus(`已生成 ${nextCount} 台机器狗的放置槽位。请继续在地图上为每台机器狗选择节点，然后应用到当前会话。`);
     }
 
     async function submitPlan(url, payload, successLabel) {
@@ -2056,29 +2041,7 @@
       setPlan(data);
       renderPlanSummary();
       draw();
-      setStatus(`${successLabel}，当前仅生成预览：${data.plan_id}。点击“执行计划并保存”后才会写入 data/outputs。`);
-    }
-
-    async function executeCurrentPlan() {
-      if (!state.plan || !state.plan.plan_id) {
-        throw new Error('请先生成一个规划预览');
-      }
-      if (state.plan.persistence && state.plan.persistence.saved) {
-        setStatus(`该计划已保存到 ${state.plan.persistence.output_dir}`);
-        return;
-      }
-      setStatus('正在执行计划并保存结果...');
-      const response = await fetch(`/api/planner/interactive/plans/${encodeURIComponent(state.plan.plan_id)}/execute`, {
-        method: 'POST',
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.detail || 'execute plan failed');
-      }
-      setPlan(data);
-      renderPlanSummary();
-      draw();
-      setStatus(`计划已执行并保存到 ${data.persistence?.output_dir || 'data/outputs'}`);
+      setStatus(`${successLabel}：${data.plan_id}。FastAPI 已返回计算结果，保存和下发请走总后台。`);
     }
 
     canvas.addEventListener('mousemove', (event) => {
@@ -2152,7 +2115,7 @@
         renderRobotInitialization();
         renderLegend();
         draw();
-        setStatus(`已为 ${robotDisplayName(currentRobotIndex)} 选择位置：${nav.id} ${nav.name}。记得保存初始化配置。`);
+        setStatus(`已为 ${robotDisplayName(currentRobotIndex)} 选择位置：${nav.id} ${nav.name}。记得应用到当前会话。`);
         return;
       }
       if (state.mode === 'manual') {
@@ -2260,11 +2223,12 @@
 
     document.getElementById('submitManualBtn').addEventListener('click', async () => {
       try {
-        await submitPlan('/api/planner/interactive/plans/manual', {
-          nav_point_ids: Array.from(state.selectedNavIds),
-          mission_label: 'console_manual_plan',
-          scene: state.currentScene,
-        }, '手选任务点规划完成');
+	        await submitPlan('/api/planner/interactive/plans/manual', {
+	          nav_point_ids: Array.from(state.selectedNavIds),
+	          mission_label: 'console_manual_plan',
+	          scene: state.currentScene,
+	          robot_config: buildRobotConfigPayload(),
+	        }, '手选任务点规划完成');
       } catch (error) {
         setStatus(error.message, true);
       }
@@ -2272,12 +2236,13 @@
 
     document.getElementById('submitPolygonBtn').addEventListener('click', async () => {
       try {
-        await submitPlan('/api/planner/interactive/plans/polygon', {
-          vertices: state.polygonVertices,
-          coordinate_mode: 'local',
-          mission_label: 'console_polygon_plan',
-          scene: state.currentScene,
-        }, '范围规划完成');
+	        await submitPlan('/api/planner/interactive/plans/polygon', {
+	          vertices: state.polygonVertices,
+	          coordinate_mode: 'local',
+	          mission_label: 'console_polygon_plan',
+	          scene: state.currentScene,
+	          robot_config: buildRobotConfigPayload(),
+	        }, '范围规划完成');
       } catch (error) {
         setStatus(error.message, true);
       }
@@ -2285,22 +2250,19 @@
 
     document.getElementById('submitSemanticBtn').addEventListener('click', async () => {
       try {
-        await submitPlan('/api/planner/interactive/plans/semantic', {
-          query: semanticQuery.value,
-          use_llm: true,
-          scene: state.currentScene,
-        }, '语义任务规划完成');
+	        await submitPlan('/api/planner/interactive/plans/semantic', {
+	          query: semanticQuery.value,
+	          use_llm: true,
+	          scene: state.currentScene,
+	          robot_config: buildRobotConfigPayload(),
+	        }, '语义任务规划完成');
       } catch (error) {
         setStatus(error.message, true);
       }
     });
 
     executePlanBtn.addEventListener('click', async () => {
-      try {
-        await executeCurrentPlan();
-      } catch (error) {
-        setStatus(error.message, true);
-      }
+      setStatus('FastAPI 不再执行保存。请把当前规划结果交给总后台保存或下发。');
     });
 
     window.addEventListener('resize', () => {
@@ -2315,13 +2277,9 @@
         resizeCanvas();
         updateCanvasCursor();
         bindHorizontalWheelScroll();
-        if (initialPlanId) {
-          await loadPlan(initialPlanId);
-          setStatus(`已加载历史计划：${initialPlanId}`);
-        } else {
-          const blockedReason = planningBlockedReason();
-          setStatus(blockedReason || `场景 ${state.currentScene} 已加载，可以开始选点、框选或输入语义任务。`);
-        }
+        const blockedReason = planningBlockedReason();
+        const planIdHint = initialPlanId ? 'FastAPI 不再支持通过 plan_id 加载历史计划；' : '';
+        setStatus(planIdHint + (blockedReason || `场景 ${state.currentScene} 已加载，可以开始选点、框选或输入语义任务。`));
       } catch (error) {
         setStatus(error.message, true);
       }
