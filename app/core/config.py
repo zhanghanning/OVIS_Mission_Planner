@@ -99,7 +99,7 @@ def get_settings() -> Settings:
     cors_allow_origin_regex = os.getenv('BACKEND_CORS_ALLOW_ORIGIN_REGEX', '').strip()
     cors_allow_credentials = _parse_bool(os.getenv('BACKEND_CORS_ALLOW_CREDENTIALS'), default=False)
     deepseek_api_base_url = os.getenv('DEEPSEEK_API_BASE_URL', 'https://api.deepseek.com').rstrip('/')
-    deepseek_api_key = os.getenv('DEEPSEEK_API_KEY', 'sk-36636fe3c3314425818614756820cc77').strip()
+    deepseek_api_key = os.getenv('DEEPSEEK_API_KEY', '').strip()
     deepseek_api_model = os.getenv('DEEPSEEK_API_MODEL', '').strip() or 'deepseek-v4-flash'
     semantic_llm_provider = os.getenv('SEMANTIC_LLM_PROVIDER', '').strip().lower()
     if not semantic_llm_provider:

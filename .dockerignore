@@ -8,3 +8,7 @@ __pycache__/
 *.pyd
 logs/
 data/*
+!data/assets/
+!data/assets/**/*
+!data/configs/
+!data/configs/**/*
