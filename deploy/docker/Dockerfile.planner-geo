@@ -19,12 +19,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
     && rm -rf /var/lib/apt/lists/*
 
+COPY requirements.txt /tmp/requirements.txt
 COPY deploy/docker/requirements-geo.txt /tmp/requirements-geo.txt
 
 RUN python -m pip install --upgrade pip setuptools wheel && \
+    pip install -r /tmp/requirements.txt && \
     pip install -r /tmp/requirements-geo.txt
 
 WORKDIR /workspace/mission_planner
+COPY . /workspace/mission_planner
 
 EXPOSE 8081
 

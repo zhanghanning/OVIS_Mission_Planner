@@ -15,9 +15,9 @@
 - 支持运行时机器狗初始化配置，数量不固定，位置由导航点动态绑定。
 - 支持手选任务点、圈选范围、语义任务三种交互式建任务方式。
 - 支持电力语义目标，包括 `power_infrastructure`、`substation`、`wind_turbine`、`solar_generator`。
-- 支持规则解析、OpenAI 兼容接口、本地 Transformers 三种语义解析模式。
+- 支持规则解析、DeepSeek API、OpenAI 兼容接口、本地 Transformers 四种语义解析模式。
 - 支持原生 C++ 规划核心的可选加速，构建失败时自动回退到 Python 实现。
-- 支持 Docker 部署、Cloudflare Tunnel 暴露和 ROS2 bridge 联动。
+- 支持 Docker 部署、云端 API-only 部署、Cloudflare Tunnel 暴露和 ROS2 bridge 联动。
 
 ## 系统组成
 
@@ -139,7 +139,7 @@ data/assets/<scene_name>/
 - 规则解析
   支持模板匹配、建筑名称匹配、编号楼匹配、独立导航点匹配、电力资产名称匹配、类别匹配。
 - LLM 解析
-  在规则解析未命中时，可使用 OpenAI 兼容接口或本地 Transformers 模型做补充解析。
+  在规则解析未命中时，可使用 DeepSeek API、OpenAI 兼容接口或本地 Transformers 模型做补充解析。
 
 当前已覆盖的目标类型包括：
 
@@ -223,13 +223,33 @@ cd /home/techno/mission_planner/deploy/docker
 cp .env.example .env
 ```
 
-至少需要根据本机修改：
+如果你只是想把仓库部署起来并直接使用 DeepSeek API，最少只需要改：
 
-- `MISSION_PLANNER_PATH`
+- `DEEPSEEK_API_KEY`
 - `PUBLIC_BASE_URL`
 - `BACKEND_CORS_ALLOW_ORIGINS`
-- `LOCAL_MODEL_ROOT`
-- `ROS2_WS_PATH`
+
+说明：
+
+- `DEEPSEEK_API_KEY` 存在时，后端会自动启用语义 LLM 解析
+- 默认模型是 `deepseek-v4-flash`
+- 默认接口基地址是 `https://api.deepseek.com`
+- `planner-api-lite` 现在默认按云端 API 调用设计，不要求本地 GPU，也不要求挂载本地模型目录
+
+如果你要改成别的 OpenAI 兼容接口，再额外设置：
+
+- `SEMANTIC_LLM_PROVIDER=openai_compatible`
+- `SEMANTIC_LLM_BASE_URL`
+- `SEMANTIC_LLM_API_KEY`
+- `SEMANTIC_LLM_MODEL`
+
+如果你要改成本地模型，再额外设置：
+
+- `SEMANTIC_LLM_PROVIDER=local_transformers`
+- `INSTALL_LOCAL_LLM=true`
+- `SEMANTIC_LLM_LOCAL_MODEL_PATH`
+- `SEMANTIC_LLM_LOCAL_ADAPTER_PATH`
+- `SEMANTIC_LLM_LOCAL_DEVICE`
 
 ### 2. 检查默认场景
 
@@ -288,7 +308,7 @@ docker logs -f planner-api-lite
 
 1. 尝试构建原生规划核心
 2. 构建失败时打印日志并回退到 Python 规划器
-3. 启动 `uvicorn app.main:app --host 0.0.0.0 --port 8081`
+3. 启动 `uvicorn app.main:app --host ${HOST:-0.0.0.0} --port ${PORT:-8081}`
 
 ## 配置项
 
@@ -304,10 +324,16 @@ deploy/docker/.env
   用于批处理结果回调和结果下载地址拼接
 - `BACKEND_CORS_ALLOW_ORIGINS`
   正式前端的允许来源
+- `DEEPSEEK_API_KEY`
+  DeepSeek API Key。存在时默认自动启用 `deepseek` provider
+- `DEEPSEEK_API_BASE_URL`
+  默认 `https://api.deepseek.com`
+- `DEEPSEEK_API_MODEL`
+  默认 `deepseek-v4-flash`
 - `SEMANTIC_LLM_ENABLED`
-  是否启用语义模型
+  是否启用语义模型。不填时会根据 provider 是否配置完整自动判断
 - `SEMANTIC_LLM_PROVIDER`
-  `disabled`、`openai_compatible`、`local_transformers`
+  `disabled`、`deepseek`、`openai_compatible`、`local_transformers`
 - `SEMANTIC_LLM_BASE_URL`
 - `SEMANTIC_LLM_API_KEY`
 - `SEMANTIC_LLM_MODEL`
@@ -321,6 +347,12 @@ deploy/docker/.env
 
 - `disabled`
   仅使用规则解析
+- `deepseek`
+  使用 DeepSeek 官方 API，默认通过 OpenAI 兼容 `/chat/completions` 接口调用，适合作为云端部署主路径
+
+补充说明：
+
+- `deepseek-chat` 和 `deepseek-reasoner` 还能兼容使用，但官方文档已说明它们以后会弃用
 - `openai_compatible`
   使用 OpenAI 兼容接口做语义补充解析
 - `local_transformers`

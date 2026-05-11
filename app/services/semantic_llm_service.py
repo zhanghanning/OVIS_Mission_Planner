@@ -5,7 +5,7 @@ import json
 import logging
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import requests
 
@@ -14,6 +14,8 @@ from app.services.local_asset_service import nav_point_index
 
 
 logger = logging.getLogger(__name__)
+
+SUPPORTED_PROVIDERS = {"disabled", "deepseek", "openai_compatible", "local_transformers"}
 
 
 SYSTEM_PROMPT = (
@@ -243,6 +245,46 @@ def _decode_local_generation(processor, tokenizer, generated_ids, input_ids):
     raise RuntimeError("no decoder available for local transformers provider")
 
 
+def _invoke_chat_completion(
+    *,
+    base_url: str,
+    api_key: str,
+    model: str,
+    timeout_sec: int,
+    system_prompt: str,
+    user_prompt: str,
+    extra_payload: Optional[Dict[str, Any]] = None,
+) -> Dict:
+    if not base_url or not model:
+        raise RuntimeError("chat completion provider requires base_url and model")
+
+    url = base_url
+    if not url.endswith("/chat/completions"):
+        url = url.rstrip("/") + "/chat/completions"
+
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    payload: Dict[str, Any] = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.1,
+        "stream": False,
+    }
+    if extra_payload:
+        payload.update(extra_payload)
+
+    response = requests.post(url, headers=headers, json=payload, timeout=timeout_sec)
+    response.raise_for_status()
+    raw = response.json()
+    content = raw["choices"][0]["message"]["content"]
+    return _json_from_text(content)
+
+
 def _invoke_local_transformers(system_prompt: str, user_prompt: str) -> Dict:
     settings = get_settings()
     model_path = settings.semantic_llm_local_model_path
@@ -296,28 +338,32 @@ def _invoke_openai_compatible(system_prompt: str, user_prompt: str) -> Dict:
     settings = get_settings()
     if not settings.semantic_llm_base_url or not settings.semantic_llm_model:
         raise RuntimeError("openai_compatible provider requires SEMANTIC_LLM_BASE_URL and SEMANTIC_LLM_MODEL")
+    return _invoke_chat_completion(
+        base_url=settings.semantic_llm_base_url,
+        api_key=settings.semantic_llm_api_key,
+        model=settings.semantic_llm_model,
+        timeout_sec=settings.semantic_llm_timeout_sec,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+    )
 
-    url = settings.semantic_llm_base_url
-    if not url.endswith("/chat/completions"):
-        url = url.rstrip("/") + "/chat/completions"
 
-    headers = {"Content-Type": "application/json"}
-    if settings.semantic_llm_api_key:
-        headers["Authorization"] = f"Bearer {settings.semantic_llm_api_key}"
-
-    payload = {
-        "model": settings.semantic_llm_model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "temperature": 0.1,
-    }
-    response = requests.post(url, headers=headers, json=payload, timeout=settings.semantic_llm_timeout_sec)
-    response.raise_for_status()
-    raw = response.json()
-    content = raw["choices"][0]["message"]["content"]
-    return _json_from_text(content)
+def _invoke_deepseek(system_prompt: str, user_prompt: str) -> Dict:
+    settings = get_settings()
+    if not settings.deepseek_api_key and not settings.semantic_llm_api_key:
+        raise RuntimeError("deepseek provider requires DEEPSEEK_API_KEY or SEMANTIC_LLM_API_KEY")
+    return _invoke_chat_completion(
+        base_url=settings.semantic_llm_base_url or settings.deepseek_api_base_url,
+        api_key=settings.semantic_llm_api_key or settings.deepseek_api_key,
+        model=settings.semantic_llm_model or settings.deepseek_api_model,
+        timeout_sec=settings.semantic_llm_timeout_sec,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        extra_payload={
+            "thinking": {"type": "disabled"},
+            "response_format": {"type": "json_object"},
+        },
+    )
 
 
 def resolve_semantic_selection_with_llm(
@@ -335,6 +381,8 @@ def resolve_semantic_selection_with_llm(
         return None
 
     user_prompt = build_semantic_user_prompt(query, target_sets, semantic_catalog, scene_name)
+    if provider == "deepseek":
+        return _invoke_deepseek(SYSTEM_PROMPT, user_prompt)
     if provider == "openai_compatible":
         return _invoke_openai_compatible(SYSTEM_PROMPT, user_prompt)
     if provider == "local_transformers":
@@ -359,12 +407,22 @@ def semantic_llm_provider_status() -> Dict:
     return {
         "enabled": settings.semantic_llm_enabled,
         "provider": settings.semantic_llm_provider,
+        "supported_providers": sorted(SUPPORTED_PROVIDERS),
         "project_root": str(settings.project_root),
         "dependency_status": dependency_status,
+        "deepseek": {
+            "configured": bool(settings.deepseek_api_key),
+            "enabled_by_current_provider": settings.semantic_llm_provider == "deepseek" and settings.semantic_llm_enabled,
+            "base_url": settings.deepseek_api_base_url,
+            "model": settings.deepseek_api_model,
+            "api_key_present": bool(settings.deepseek_api_key),
+        },
         "openai_compatible": {
             "configured": bool(settings.semantic_llm_base_url and settings.semantic_llm_model),
+            "enabled_by_current_provider": settings.semantic_llm_provider in {"deepseek", "openai_compatible"} and settings.semantic_llm_enabled,
             "base_url": settings.semantic_llm_base_url,
             "model": settings.semantic_llm_model,
+            "api_key_present": bool(settings.semantic_llm_api_key),
         },
         "local_transformers": {
             "configured": local_model_path is not None,

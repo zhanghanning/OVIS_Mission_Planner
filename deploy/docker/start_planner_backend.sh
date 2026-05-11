@@ -3,6 +3,8 @@ set -euo pipefail
 
 PROJECT_ROOT="/workspace/mission_planner"
 BUILD_SCRIPT="${PROJECT_ROOT}/scripts/build_planner_native.sh"
+HOST="${HOST:-0.0.0.0}"
+PORT="${PORT:-8081}"
 
 if [[ -x "${BUILD_SCRIPT}" ]]; then
   echo "Preparing native planner kernel..."
@@ -16,4 +18,4 @@ else
   echo "Native planner build script not found or not executable, using Python planner." >&2
 fi
 
-exec uvicorn app.main:app --host 0.0.0.0 --port 8081
+exec uvicorn app.main:app --host "${HOST}" --port "${PORT}"

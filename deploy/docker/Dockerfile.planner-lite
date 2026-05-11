@@ -32,6 +32,7 @@ RUN python -m pip install --upgrade pip setuptools wheel && \
     fi
 
 WORKDIR /workspace/mission_planner
+COPY . /workspace/mission_planner
 
 EXPOSE 8081
 

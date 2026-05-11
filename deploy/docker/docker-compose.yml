@@ -11,22 +11,22 @@ services:
         TORCH_WHL_CHANNEL: ${TORCH_WHL_CHANNEL}
     image: mission-planner:lite
     container_name: planner-api-lite
-    runtime: nvidia
     environment:
       TZ: ${TZ}
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      PYTORCH_CUDA_ALLOC_CONF: ${PYTORCH_CUDA_ALLOC_CONF}
+      PORT: 8081
       MISSION_PLANNER_BASE_DIR: /workspace/mission_planner
       JOB_DIR: /data/jobs
       PACKAGE_DIR: /data/packages
       RESULT_DIR: /data/results
       LOCAL_PLAN_DIR: /workspace/mission_planner/data/local_plans
-      MISSION_ASSET_ROOT_DIR: /workspace/mission_planner/data/assets/ncepu
+      MISSION_ASSET_ROOT_DIR: /workspace/mission_planner/data/assets/NCEPU
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
       BACKEND_CORS_ALLOW_ORIGINS: ${BACKEND_CORS_ALLOW_ORIGINS}
       BACKEND_CORS_ALLOW_ORIGIN_REGEX: ${BACKEND_CORS_ALLOW_ORIGIN_REGEX}
       BACKEND_CORS_ALLOW_CREDENTIALS: ${BACKEND_CORS_ALLOW_CREDENTIALS}
+      DEEPSEEK_API_BASE_URL: ${DEEPSEEK_API_BASE_URL}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_API_MODEL: ${DEEPSEEK_API_MODEL}
       SEMANTIC_LLM_ENABLED: ${SEMANTIC_LLM_ENABLED}
       SEMANTIC_LLM_PROVIDER: ${SEMANTIC_LLM_PROVIDER}
       SEMANTIC_LLM_BASE_URL: ${SEMANTIC_LLM_BASE_URL}
@@ -44,11 +44,12 @@ services:
     working_dir: /workspace/mission_planner
     command: ["bash", "deploy/docker/start_planner_backend.sh"]
     volumes:
-      - ${MISSION_PLANNER_PATH}:/workspace/mission_planner
-      - ${LOCAL_MODEL_ROOT}:/workspace/models:ro
       - planner_jobs:/data/jobs
       - planner_packages:/data/packages
       - planner_results:/data/results
+      - planner_outputs:/workspace/mission_planner/data/outputs
+      - planner_local_plans:/workspace/mission_planner/data/local_plans
+      - planner_robot_configs:/workspace/mission_planner/data/configs/robot_initialization
     ports:
       - "8081:8081"
     restart: unless-stopped
@@ -95,22 +96,22 @@ services:
       dockerfile: deploy/docker/Dockerfile.planner-geo
     image: mission-planner:geo
     container_name: planner-api-geo
-    runtime: nvidia
     environment:
       TZ: ${TZ}
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      PYTORCH_CUDA_ALLOC_CONF: ${PYTORCH_CUDA_ALLOC_CONF}
+      PORT: 8081
       MISSION_PLANNER_BASE_DIR: /workspace/mission_planner
       JOB_DIR: /data/jobs
       PACKAGE_DIR: /data/packages
       RESULT_DIR: /data/results
       LOCAL_PLAN_DIR: /workspace/mission_planner/data/local_plans
-      MISSION_ASSET_ROOT_DIR: /workspace/mission_planner/data/assets/ncepu
+      MISSION_ASSET_ROOT_DIR: /workspace/mission_planner/data/assets/NCEPU
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
       BACKEND_CORS_ALLOW_ORIGINS: ${BACKEND_CORS_ALLOW_ORIGINS}
       BACKEND_CORS_ALLOW_ORIGIN_REGEX: ${BACKEND_CORS_ALLOW_ORIGIN_REGEX}
       BACKEND_CORS_ALLOW_CREDENTIALS: ${BACKEND_CORS_ALLOW_CREDENTIALS}
+      DEEPSEEK_API_BASE_URL: ${DEEPSEEK_API_BASE_URL}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_API_MODEL: ${DEEPSEEK_API_MODEL}
       SEMANTIC_LLM_ENABLED: ${SEMANTIC_LLM_ENABLED}
       SEMANTIC_LLM_PROVIDER: ${SEMANTIC_LLM_PROVIDER}
       SEMANTIC_LLM_BASE_URL: ${SEMANTIC_LLM_BASE_URL}
@@ -128,11 +129,12 @@ services:
     working_dir: /workspace/mission_planner
     command: ["bash", "deploy/docker/start_planner_backend.sh"]
     volumes:
-      - ${MISSION_PLANNER_PATH}:/workspace/mission_planner
-      - ${LOCAL_MODEL_ROOT}:/workspace/models:ro
       - planner_jobs:/data/jobs
       - planner_packages:/data/packages
       - planner_results:/data/results
+      - planner_outputs:/workspace/mission_planner/data/outputs
+      - planner_local_plans:/workspace/mission_planner/data/local_plans
+      - planner_robot_configs:/workspace/mission_planner/data/configs/robot_initialization
     ports:
       - "8082:8081"
     restart: unless-stopped
@@ -172,3 +174,6 @@ volumes:
   planner_jobs:
   planner_packages:
   planner_results:
+  planner_outputs:
+  planner_local_plans:
+  planner_robot_configs:
